@@ -11,7 +11,31 @@ const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'developm
 
 let watcher: chokidar.FSWatcher | null = null;
 let scanInterval: NodeJS.Timeout | null = null;
-const processedFiles = new Set<string>(); // Track already processed files
+
+// Get the processing directory path
+function getProcessingPath(): string {
+  const config = getConfig();
+  return path.join(config.blackholePath, 'processing');
+}
+
+// Get the failed directory path
+function getFailedPath(): string {
+  const config = getConfig();
+  return path.join(config.blackholePath, 'failed');
+}
+
+// Ensure processing and failed directories exist
+function ensureWorkingDirectories(): void {
+  const processingPath = getProcessingPath();
+  const failedPath = getFailedPath();
+
+  if (!fs.existsSync(processingPath)) {
+    fs.mkdirSync(processingPath, { recursive: true });
+  }
+  if (!fs.existsSync(failedPath)) {
+    fs.mkdirSync(failedPath, { recursive: true });
+  }
+}
 
 async function processFile(filePath: string): Promise<void> {
   // Only process .torrent files
@@ -19,22 +43,38 @@ async function processFile(filePath: string): Promise<void> {
     return;
   }
 
-  // Skip if already successfully processed (file was moved)
-  if (processedFiles.has(filePath)) {
-    return; // Silent skip - file already handled
+  // Skip files in subdirectories (processing/, failed/, processed/)
+  const config = getConfig();
+  const relativePath = path.relative(config.blackholePath, filePath);
+  if (relativePath.includes(path.sep)) {
+    return; // File is in a subdirectory, skip it
   }
 
   console.log(`[Watcher] Processing: ${filePath}`);
 
-  let link = extractLinkFromTorrent(filePath);
+  // Move file to processing directory FIRST to prevent re-processing
+  const processingPath = getProcessingPath();
+  const processingFilePath = path.join(processingPath, path.basename(filePath));
+
+  try {
+    ensureWorkingDirectories();
+    fs.renameSync(filePath, processingFilePath);
+    console.log(`[Watcher] Moved to processing: ${processingFilePath}`);
+  } catch (error) {
+    console.error(`[Watcher] Failed to move file to processing:`, error);
+    return; // Can't proceed if we can't move the file
+  }
+
+  // Now work with the file in processing directory
+  let link = extractLinkFromTorrent(processingFilePath);
   if (!link) {
-    console.warn(`[Watcher] No link found in: ${filePath}`);
-    processedFiles.add(filePath); // Mark as processed to avoid spam
+    console.warn(`[Watcher] No link found in: ${processingFilePath}`);
+    // Move to failed directory
+    moveToFailed(processingFilePath, 'no-link-found');
     return;
   }
 
-  const filename = extractNameFromTorrent(filePath) || path.basename(filePath, '.torrent');
-  const config = getConfig();
+  const filename = extractNameFromTorrent(processingFilePath) || path.basename(processingFilePath, '.torrent');
 
   console.log(`[Watcher] Found link: ${link}`);
   console.log(`[Watcher] Filename: ${filename}`);
@@ -50,7 +90,9 @@ async function processFile(filePath: string): Promise<void> {
       }
     } catch (error: any) {
       console.error(`[Watcher] DL-Protect resolution error: ${error.message}`);
-      // Continue with original link
+      // Move to failed and stop
+      moveToFailed(processingFilePath, 'dlprotect-error');
+      return;
     }
   }
 
@@ -65,38 +107,49 @@ async function processFile(filePath: string): Promise<void> {
       }
     } catch (error: any) {
       console.error(`[Watcher] AllDebrid error: ${error.message}`);
-      // Continue with original link
+      // Continue with original link (debrid is optional)
     }
   }
 
   const success = await addDownloadToAll(link, filename);
 
   if (success) {
-    processedFiles.add(filePath);
-
     try {
       if (DEBUG) {
         // Debug mode: move to processed folder for inspection
-        const config = getConfig();
-        const processedPath = path.join(config.processedPath, path.basename(filePath));
+        const processedFilePath = path.join(config.processedPath, path.basename(processingFilePath));
 
         if (!fs.existsSync(config.processedPath)) {
           fs.mkdirSync(config.processedPath, { recursive: true });
         }
 
-        fs.renameSync(filePath, processedPath);
-        console.log(`[Watcher] Moved to processed: ${processedPath}`);
+        fs.renameSync(processingFilePath, processedFilePath);
+        console.log(`[Watcher] Moved to processed: ${processedFilePath}`);
       } else {
         // Production mode: delete the file
-        fs.unlinkSync(filePath);
-        console.log(`[Watcher] Deleted: ${filePath}`);
+        fs.unlinkSync(processingFilePath);
+        console.log(`[Watcher] Deleted: ${processingFilePath}`);
       }
     } catch (error) {
       console.error(`[Watcher] Failed to cleanup file:`, error);
     }
   } else {
-    console.error(`[Watcher] Failed to add download for: ${filePath}`);
-    // Don't mark as processed - will retry on next scan
+    console.error(`[Watcher] Failed to add download for: ${processingFilePath}`);
+    moveToFailed(processingFilePath, 'download-client-error');
+  }
+}
+
+function moveToFailed(filePath: string, reason: string): void {
+  try {
+    const failedPath = getFailedPath();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const baseName = path.basename(filePath, '.torrent');
+    const failedFilePath = path.join(failedPath, `${baseName}_${reason}_${timestamp}.torrent`);
+
+    fs.renameSync(filePath, failedFilePath);
+    console.log(`[Watcher] Moved to failed: ${failedFilePath}`);
+  } catch (error) {
+    console.error(`[Watcher] Failed to move file to failed directory:`, error);
   }
 }
 
@@ -108,6 +161,11 @@ export function startWatcher(): void {
     fs.mkdirSync(config.blackholePath, { recursive: true });
     console.log(`[Watcher] Created blackhole directory: ${config.blackholePath}`);
   }
+
+  // Create working directories
+  ensureWorkingDirectories();
+  console.log(`[Watcher] Processing directory: ${getProcessingPath()}`);
+  console.log(`[Watcher] Failed directory: ${getFailedPath()}`);
 
   // Only create processed directory in debug mode
   if (DEBUG && !fs.existsSync(config.processedPath)) {
@@ -125,21 +183,27 @@ export function startWatcher(): void {
     console.warn('[Watcher] No download clients enabled! Configure clients via web UI.');
   }
 
-  // Process existing files
+  // Process existing files (only in root blackhole, not subdirectories)
   console.log(`[Watcher] Scanning existing files in: ${config.blackholePath}`);
   const existingFiles = fs.readdirSync(config.blackholePath)
     .filter(f => f.endsWith('.torrent'))
+    .filter(f => {
+      const fullPath = path.join(config.blackholePath, f);
+      return fs.statSync(fullPath).isFile();
+    })
     .map(f => path.join(config.blackholePath, f));
 
   for (const file of existingFiles) {
     processFile(file).catch(console.error);
   }
 
-  // Watch for new files
+  // Watch for new files (only root directory)
   watcher = chokidar.watch(config.blackholePath, {
     ignored: [
       /(^|[\/\\])\../, // Ignore dotfiles
+      '**/processing/**', // Ignore processing folder
       '**/processed/**', // Ignore processed folder
+      '**/failed/**', // Ignore failed folder
     ],
     persistent: true,
     ignoreInitial: true, // We already processed existing files
@@ -174,8 +238,13 @@ function scanDirectory(): void {
   const config = getConfig();
 
   try {
+    // Only scan root blackhole directory, not subdirectories
     const files = fs.readdirSync(config.blackholePath)
       .filter(f => f.endsWith('.torrent'))
+      .filter(f => {
+        const fullPath = path.join(config.blackholePath, f);
+        return fs.statSync(fullPath).isFile();
+      })
       .map(f => path.join(config.blackholePath, f));
 
     if (files.length > 0) {
