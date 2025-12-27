@@ -24,6 +24,7 @@ vendor/
 dist/
 build/
 *.cache
+cache/
 
 # Temporary files
 *.tmp

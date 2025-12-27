@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { BaseScraper, parseQuality, parseLanguage, parseSize } from './base.js';
 import { ScraperResult, SearchParams, ContentType } from '../models/torznab.js';
 import { fetchHtml, encodeSearchQuery } from '../utils/http.js';
+import { isNameMatch, extractName } from '../utils/text.js';
 
 type ZTContentType = 'films' | 'series' | 'mangas';
 
@@ -24,110 +25,6 @@ export class ZoneTelechargerScraper implements BaseScraper {
   readonly name = 'Zone-Téléchargement';
 
   constructor(public readonly baseUrl: string) {}
-
-  // Normalise une chaîne pour la comparaison (minuscules, sans accents, sans caractères spéciaux)
-  private normalizeForMatch(str: string): string {
-    return str
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Supprime les accents
-      .replace(/[^a-z0-9]/g, ''); // Garde uniquement lettres et chiffres
-  }
-
-  // Calcule la distance de Levenshtein entre deux chaînes
-  private levenshteinDistance(a: string, b: string): number {
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1,     // insertion
-            matrix[i - 1][j] + 1      // suppression
-          );
-        }
-      }
-    }
-
-    return matrix[b.length][a.length];
-  }
-
-  // Vérifie si deux noms de séries sont suffisamment proches
-  private isSeriesNameMatch(searchQuery: string, foundName: string): boolean {
-    const normalizedQuery = this.normalizeForMatch(searchQuery);
-    const normalizedFound = this.normalizeForMatch(foundName);
-
-    // Si les deux sont identiques, c'est un match direct
-    if (normalizedQuery === normalizedFound) {
-      console.log(`[ZoneTelecharger] Exact match: "${searchQuery}" = "${foundName}"`);
-      return true;
-    }
-
-    // Calcule la distance de Levenshtein
-    const distance = this.levenshteinDistance(normalizedQuery, normalizedFound);
-
-    // La distance autorisée dépend de la longueur de la recherche
-    const queryLength = normalizedQuery.length;
-    let allowedDistance: number;
-
-    if (queryLength <= 5) {
-      allowedDistance = 1;
-    } else if (queryLength <= 10) {
-      allowedDistance = 2;
-    } else {
-      allowedDistance = Math.floor(queryLength * 0.2);
-    }
-
-    console.log(`[ZoneTelecharger] Comparing "${searchQuery}" with "${foundName}": distance=${distance}, allowed=${allowedDistance}`);
-
-    return distance <= allowedDistance;
-  }
-
-  // Extrait le nom de la série depuis le titre (enlève la partie "Saison X" et langue)
-  private extractSeriesName(titleHtml: string): { seriesName: string; season?: number } {
-    // Enlève les tags HTML
-    const cleanTitle = titleHtml
-      .replace(/<[^>]+>/g, '') // Supprime les tags HTML
-      .replace(/\s+/g, ' ')    // Normalise les espaces
-      .trim();
-
-    // Split sur " - " pour séparer les parties
-    const parts = cleanTitle.split(' - ');
-
-    if (parts.length >= 2) {
-      let seriesName = '';
-      let season: number | undefined;
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i].trim();
-        const seasonMatch = part.match(/^saison\s*(\d+)$/i);
-
-        if (seasonMatch) {
-          season = parseInt(seasonMatch[1], 10);
-          seriesName = parts.slice(0, i).join(' - ').trim();
-          break;
-        }
-      }
-
-      if (!seriesName) {
-        seriesName = parts.slice(0, -1).join(' - ').trim();
-      }
-
-      return { seriesName, season };
-    }
-
-    return { seriesName: cleanTitle };
-  }
 
   async search(params: SearchParams): Promise<ScraperResult[]> {
     const results: ScraperResult[] = [];
@@ -270,14 +167,15 @@ export class ZoneTelechargerScraper implements BaseScraper {
         const langText = $block.find('div.cover_infos_title .detail_release > span > b').text().trim();
         const language = parseLanguage(langText) || parseLanguage(title);
 
-        const { seriesName, season: extractedSeason } = this.extractSeriesName(titleHtml);
+        // Extrait le nom et la saison depuis le titre (selon le type de contenu)
+        const { name, season: extractedSeason } = extractName(titleHtml, contentType);
 
-        console.log(`[ZoneTelecharger] Parsed title: "${title}" -> series="${seriesName}", season=${extractedSeason}, lang="${langText}"`);
+        console.log(`[ZoneTelecharger] Parsed title: "${title}" -> name="${name}", season=${extractedSeason}, lang="${langText}"`);
 
-        // Vérifie que le nom de la série correspond à la recherche (Levenshtein)
-        if (params.q && seriesName) {
-          if (!this.isSeriesNameMatch(params.q, seriesName)) {
-            console.log(`[ZoneTelecharger] Skipping "${seriesName}" - too different from "${params.q}"`);
+        // Vérifie que le nom correspond à la recherche (Levenshtein, adapté au type de contenu)
+        if (params.q && name) {
+          if (!isNameMatch(params.q, name, contentType, '[ZoneTelecharger]')) {
+            console.log(`[ZoneTelecharger] Skipping "${name}" - too different from "${params.q}"`);
             return;
           }
         }
@@ -323,9 +221,98 @@ export class ZoneTelechargerScraper implements BaseScraper {
     const $ = cheerio.load(html);
     const results: ScraperResult[] = [];
 
-    // Parse les blocs div.postinfo
-    $('div.postinfo').each((_, postinfo) => {
-      const $postinfo = $(postinfo);
+    // Extrait la taille du fichier depuis la page
+    let fileSize: number | undefined;
+
+    // Méthode 1: "Taille du fichier : X Go"
+    const bodyText = $('div.maincont, div.corps').text();
+    const sizeMatch1 = bodyText.match(/Taille du fichier\s*:\s*([\d.,]+)\s*(Go|Mo|Ko|GB|MB|KB)/i);
+    if (sizeMatch1) {
+      fileSize = parseSize(`${sizeMatch1[1]} ${sizeMatch1[2]}`);
+      console.log(`[ZoneTelecharger] Found file size (method 1): ${sizeMatch1[1]} ${sizeMatch1[2]}`);
+    }
+
+    // Méthode 2: "filename.mkv (X Go)" dans le font color="red"
+    if (!fileSize) {
+      const redText = $('font[color="red"]').text();
+      const sizeMatch2 = redText.match(/\(([\d.,]+)\s*(Go|Mo|Ko|GB|MB|KB)\)/i);
+      if (sizeMatch2) {
+        fileSize = parseSize(`${sizeMatch2[1]} ${sizeMatch2[2]}`);
+        console.log(`[ZoneTelecharger] Found file size (method 2): ${sizeMatch2[1]} ${sizeMatch2[2]}`);
+      }
+    }
+
+    // Extrait qualité et langue depuis "Qualité HDLIGHT 1080p | VOSTFR"
+    let pageQuality: string | undefined;
+    let pageLanguage: string | undefined;
+
+    const qualityDiv = $('div').filter((_, el) => {
+      const text = $(el).text();
+      return text.includes('Qualité') && text.includes('|');
+    }).first();
+
+    if (qualityDiv.length > 0) {
+      const qualityText = qualityDiv.text().trim();
+      const qualityMatch = qualityText.match(/Qualité\s+(.+?)\s*\|\s*(.+)/i);
+      if (qualityMatch) {
+        pageQuality = qualityMatch[1].trim();
+        pageLanguage = qualityMatch[2].trim();
+        console.log(`[ZoneTelecharger] Found quality: ${pageQuality}, language: ${pageLanguage}`);
+      }
+    }
+
+    // Extrait l'IMDb ID depuis les liens ou le texte (tt1234567)
+    let imdbId: string | undefined;
+    const imdbMatch = html.match(/imdb\.com\/title\/(tt\d{7,8})/i) || html.match(/\b(tt\d{7,8})\b/);
+    if (imdbMatch) {
+      imdbId = imdbMatch[1];
+      console.log(`[ZoneTelecharger] Found IMDb ID: ${imdbId}`);
+    }
+
+    // Extrait l'année de production depuis "<strong><u>Année de production</u> :</strong> 2006"
+    let pageYear: string | undefined;
+    const yearMatch = bodyText.match(/Année de production[^:]*:\s*(\d{4})/i);
+    if (yearMatch) {
+      pageYear = yearMatch[1];
+      console.log(`[ZoneTelecharger] Found production year: ${pageYear}`);
+    }
+
+    // Filtre par année si le paramètre est fourni et l'année est trouvée dans la page
+    if (params.year && pageYear) {
+      if (pageYear !== params.year) {
+        console.log(`[ZoneTelecharger] Skipping "${searchResult.title}" - year ${pageYear} != ${params.year}`);
+        return [];
+      }
+      console.log(`[ZoneTelecharger] Year filter passed: ${pageYear}`);
+    } else if (params.year && !pageYear) {
+      console.log(`[ZoneTelecharger] Year filter requested (${params.year}) but no year found on page - not filtering`);
+    }
+
+    // Trouve le h2 contenant "Liens De Téléchargement :" puis le div.postinfo qui suit (imbriqué dans un div)
+    const $h2 = $('h2').filter((_, el) => $(el).text().includes('Liens De Téléchargement'));
+
+    // Le div.postinfo est dans un des éléments frères suivants du h2
+    let $postinfo = $(''); // cheerio selection vide
+    $h2.nextAll().each((_, el) => {
+      const $el = $(el);
+      // Vérifie si c'est directement un div.postinfo
+      if ($el.is('div.postinfo')) {
+        $postinfo = $el;
+        return false; // break
+      }
+      // Sinon cherche un div.postinfo à l'intérieur
+      const $found = $el.find('div.postinfo').first();
+      if ($found.length > 0) {
+        $postinfo = $found;
+        return false; // break
+      }
+    });
+
+    if ($postinfo.length === 0) {
+      console.log(`[ZoneTelecharger] No download section found on ${searchResult.pageUrl}`);
+    }
+
+    if ($postinfo.length > 0) {
       let currentHoster = '';
 
       // Parcourt tous les éléments <b> dans le bloc
@@ -354,6 +341,7 @@ export class ZoneTelechargerScraper implements BaseScraper {
           if (params.hoster) {
             const allowedHosters = params.hoster.toLowerCase().split(',').map(h => h.trim());
             if (!allowedHosters.some(allowed => hosterLower.includes(allowed) || allowed.includes(hosterLower))) {
+              console.log(`[ZoneTelecharger] Skipping hoster "${currentHoster}" - not in allowed list: ${params.hoster}`);
               return;
             }
           }
@@ -370,31 +358,50 @@ export class ZoneTelechargerScraper implements BaseScraper {
             return;
           }
 
-          const quality = searchResult.quality || parseQuality(searchResult.title);
-          const language = searchResult.language || parseLanguage(searchResult.title);
+          const quality = pageQuality || searchResult.quality || parseQuality(searchResult.title);
+          const language = pageLanguage || searchResult.language || parseLanguage(searchResult.title);
 
-          // Construit le titre
-          let title = searchResult.title.split(' - ')[0].trim();
-          if (searchResult.season) title += ` S${String(searchResult.season).padStart(2, '0')}`;
-          if (episode !== undefined) title += `E${String(episode).padStart(2, '0')}`;
-          if (quality) title += ` ${quality}`;
-          if (language) title += ` ${language}`;
-          if (currentHoster) title += ` [${currentHoster}]`;
+          // Construit le titre au format parsable par Radarr/Sonarr
+          // Films: Titre.Année.Qualité.Language.Hoster
+          // Séries: Titre.S01E05.Qualité.Language.Hoster
+          // Nettoie le nom: enlève les crochets [xxx], les tirets et leur contenu, et les espaces multiples
+          const baseName = searchResult.title
+            .split(' - ')[0]
+            .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
+            .replace(/\s+/g, ' ')     // Normalise les espaces
+            .trim()
+            .replace(/\s+/g, '.');    // Remplace les espaces par des points
+          const parts: string[] = [baseName];
+
+          if (contentType === 'movie' && pageYear) {
+            parts.push(pageYear);
+          }
+          if (searchResult.season) {
+            parts.push(`S${String(searchResult.season).padStart(2, '0')}${episode !== undefined ? `E${String(episode).padStart(2, '0')}` : ''}`);
+          }
+          if (quality) parts.push(quality.replace(/\s+/g, '.'));
+          if (language) parts.push(language.replace(/\s+/g, '.'));
+          if (currentHoster) parts.push(currentHoster.replace(/\s+/g, '.'));
+
+          const title = parts.join('.');
 
           results.push({
             title,
             link: downloadLink,
-            size: undefined, // Pas de taille disponible dans cette structure
+            pageUrl: searchResult.pageUrl,
+            size: fileSize,
             quality,
             language,
+            imdbId,
             season: searchResult.season,
             episode,
             contentType,
             pubDate: new Date(),
+            year: pageYear ? parseInt(pageYear, 10) : undefined,
           });
         }
       });
-    });
+    }
 
     console.log(`[ZoneTelecharger] Found ${results.length} download links on detail page`);
     return results;

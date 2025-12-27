@@ -4,6 +4,7 @@ import { torznabRoutes } from './routes/torznab.js';
 import { getAvailableSites } from './scrapers/index.js';
 import { isAlldebridConfigured } from './config.js';
 import { renderHomePage } from './views/home.js';
+import { closeBrowser, getServiceCacheStats } from './utils/dlprotect.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -39,12 +40,17 @@ async function start(): Promise<void> {
 
     // JSON API info endpoint
     app.get('/info', async () => {
+      const cacheStats = await getServiceCacheStats();
       return {
         name: 'DDL Torznab',
         version: '1.0.0',
         description: 'Torznab indexer for DDL sites',
         availableSites: getAvailableSites(),
         alldebridEnabled: isAlldebridConfigured(),
+        dlprotectCache: cacheStats ? {
+          entries: cacheStats.entries,
+          directory: cacheStats.directory,
+        } : null,
         endpoints: {
           health: '/health',
           sites: '/sites',
@@ -59,6 +65,7 @@ async function start(): Promise<void> {
       host: config.host,
     });
 
+    const cacheStats = await getServiceCacheStats();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                    DDL Torznab Server                      ║
@@ -66,7 +73,8 @@ async function start(): Promise<void> {
 ║  Server running on http://${config.host}:${config.port}                    ║
 ║                                                            ║
 ║  Available sites: ${getAvailableSites().join(', ') || 'None configured'}
-║  AllDebrid: ${isAlldebridConfigured() ? 'Enabled' : 'Disabled'}                                      ║
+║  AllDebrid: ${isAlldebridConfigured() ? 'Enabled' : 'Disabled'}
+║  DL-Protect cache: ${cacheStats ? cacheStats.entries + ' entries' : 'unavailable'}
 ║                                                            ║
 ║  Open http://localhost:${config.port} in your browser            ║
 ╚════════════════════════════════════════════════════════════╝
@@ -84,6 +92,11 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await app.close();
     console.log('Server closed');
+
+    // Close Playwright browser
+    await closeBrowser();
+    console.log('Browser closed');
+
     process.exit(0);
   } catch (error) {
     console.error('Error during shutdown:', error);

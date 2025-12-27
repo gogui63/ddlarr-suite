@@ -92,7 +92,7 @@ export function contentTypeToCategory(contentType: ContentType, quality?: string
     return 5070;
   }
 
-  const isHD = quality && /1080p|720p|HD|FHD/i.test(quality);
+  const isHD = quality && /1080p|720p|HD|FHD|HDLight/i.test(quality);
   const isUHD = quality && /2160p|4K|UHD/i.test(quality);
 
   if (contentType === 'movie') {

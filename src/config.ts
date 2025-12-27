@@ -14,7 +14,7 @@ export const config = {
 
   darkiworldApiKey: process.env.DARKIWORLD_API_KEY || '',
   alldebridApiKey: process.env.ALLDEBRID_API_KEY || '',
-  flaresolverrUrl: process.env.FLARESOLVERR_URL || '',
+  dlprotectServiceUrl: process.env.DLPROTECT_SERVICE_URL || 'http://localhost:5000',
 } as const;
 
 export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld';
@@ -31,6 +31,6 @@ export function isAlldebridConfigured(): boolean {
   return Boolean(config.alldebridApiKey);
 }
 
-export function isFlaresolverrConfigured(): boolean {
-  return Boolean(config.flaresolverrUrl);
+export function isDlprotectServiceConfigured(): boolean {
+  return Boolean(config.dlprotectServiceUrl);
 }

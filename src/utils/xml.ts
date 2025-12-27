@@ -6,6 +6,7 @@ const xmlBuilder = new XMLBuilder({
   attributeNamePrefix: '@_',
   format: true,
   suppressEmptyNode: true,
+  suppressBooleanAttributes: false,
 });
 
 function formatDate(date: Date): string {
@@ -52,27 +53,60 @@ export function buildTorznabResponse(items: TorznabItem[], siteTitle: string): s
     if (item.size) {
       torznabAttrs.push({ '@_name': 'size', '@_value': String(item.size) });
     }
+    if (item.year) {
+      torznabAttrs.push({ '@_name': 'year', '@_value': String(item.year) });
+    }
 
-    return {
+    // DDL n'a pas de seeders, mais on met une valeur pour éviter le filtrage par les *arr apps
+    torznabAttrs.push({ '@_name': 'seeders', '@_value': '100' });
+    torznabAttrs.push({ '@_name': 'peers', '@_value': '100' });
+
+    // Determine content type
+    const isTV = item.category >= 5000 && item.category < 6000;
+    torznabAttrs.push({ '@_name': 'type', '@_value': isTV ? 'series' : 'movie' });
+
+    const rssItem: Record<string, unknown> = {
       title: item.title,
-      guid: item.guid,
+      guid: {
+        '@_isPermaLink': 'true',
+        '#text': item.guid,
+      },
       link: item.link,
       pubDate: item.pubDate ? formatDate(item.pubDate) : formatDate(new Date()),
+      category: categoryToName(item.category),
       size: item.size || 0,
-      category: { '#text': categoryToName(item.category), '@_id': String(item.category) },
+      description: item.title,
+      enclosure: {
+        '@_url': item.link,
+        '@_length': String(item.size || 0),
+        '@_type': 'application/x-bittorrent',
+      },
       'torznab:attr': torznabAttrs,
     };
+
+    if (item.comments) {
+      rssItem.comments = item.comments;
+    }
+
+    return rssItem;
   });
 
   const rss = {
     '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
     rss: {
-      '@_version': '2.0',
+      '@_version': '1.0',
       '@_xmlns:atom': 'http://www.w3.org/2005/Atom',
       '@_xmlns:torznab': 'http://torznab.com/schemas/2015/feed',
       channel: {
+        'atom:link': {
+          '@_rel': 'self',
+          '@_type': 'application/rss+xml',
+        },
         title: `DDL Torznab - ${siteTitle}`,
         description: `DDL indexer for ${siteTitle}`,
+        link: 'https://github.com',
+        language: 'fr-fr',
+        category: 'search',
         item: rssItems,
       },
     },
@@ -85,21 +119,52 @@ export function buildCapsResponse(caps: TorznabCaps): string {
   const capsXml = {
     '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
     caps: {
-      server: { '@_title': caps.server.title },
+      server: {
+        '@_version': '1.0',
+        '@_title': caps.server.title,
+        '@_strapline': 'DDL Indexer for Sonarr/Radarr',
+      },
       limits: {
-        '@_default': String(caps.limits.default),
         '@_max': String(caps.limits.max),
+        '@_default': String(caps.limits.default),
       },
       searching: {
-        search: { '@_available': caps.searching.search.available ? 'yes' : 'no' },
-        'tv-search': { '@_available': caps.searching.tvsearch.available ? 'yes' : 'no' },
-        'movie-search': { '@_available': caps.searching.moviesearch.available ? 'yes' : 'no' },
+        search: {
+          '@_available': caps.searching.search.available ? 'yes' : 'no',
+          '@_supportedParams': 'q',
+        },
+        'tv-search': {
+          '@_available': caps.searching.tvsearch.available ? 'yes' : 'no',
+          '@_supportedParams': 'q,season,ep,year',
+        },
+        'movie-search': {
+          '@_available': caps.searching.moviesearch.available ? 'yes' : 'no',
+          '@_supportedParams': 'q,year,imdbid,tmdbid',
+        },
       },
       categories: {
-        category: caps.categories.map((cat) => ({
-          '@_id': String(cat.id),
-          '@_name': cat.name,
-        })),
+        category: [
+          {
+            '@_id': '2000',
+            '@_name': 'Movies',
+            subcat: [
+              { '@_id': '2030', '@_name': 'Movies/SD' },
+              { '@_id': '2040', '@_name': 'Movies/HD' },
+              { '@_id': '2045', '@_name': 'Movies/UHD' },
+              { '@_id': '2060', '@_name': 'Movies/3D' },
+            ],
+          },
+          {
+            '@_id': '5000',
+            '@_name': 'TV',
+            subcat: [
+              { '@_id': '5030', '@_name': 'TV/SD' },
+              { '@_id': '5040', '@_name': 'TV/HD' },
+              { '@_id': '5045', '@_name': 'TV/UHD' },
+              { '@_id': '5070', '@_name': 'Anime' },
+            ],
+          },
+        ],
       },
     },
   };

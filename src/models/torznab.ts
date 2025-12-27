@@ -15,6 +15,7 @@ export interface TorznabItem {
   title: string;
   guid: string;
   link: string;
+  comments?: string; // URL de la page source
   pubDate?: Date;
   size?: number;
   category: TorznabCategory;
@@ -25,6 +26,7 @@ export interface TorznabItem {
   episode?: number;
   quality?: string;
   language?: string;
+  year?: number;
 }
 
 export interface TorznabCaps {
@@ -56,6 +58,7 @@ export interface SearchParams {
   season?: string;
   ep?: string;
   hoster?: string; // Liste d'hébergeurs séparés par des virgules (ex: "1fichier,rapidgator")
+  year?: string; // Année de production (ex: "2006")
 }
 
 export type ContentType = 'movie' | 'series' | 'anime';
@@ -63,6 +66,7 @@ export type ContentType = 'movie' | 'series' | 'anime';
 export interface ScraperResult {
   title: string;
   link: string;
+  pageUrl?: string; // URL de la page source
   size?: number;
   quality?: string;
   language?: string;
@@ -72,4 +76,5 @@ export interface ScraperResult {
   episode?: number;
   pubDate?: Date;
   contentType: ContentType;
+  year?: number;
 }

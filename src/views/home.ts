@@ -1,5 +1,5 @@
 import { getAvailableSites } from '../scrapers/index.js';
-import { isAlldebridConfigured, isFlaresolverrConfigured } from '../config.js';
+import { isAlldebridConfigured, isDlprotectServiceConfigured } from '../config.js';
 
 const APP_CONFIGS = {
   radarr: {
@@ -32,7 +32,7 @@ const APP_CONFIGS = {
 export function renderHomePage(host: string): string {
   const sites = getAvailableSites();
   const alldebridEnabled = isAlldebridConfigured();
-  const flaresolverrEnabled = isFlaresolverrConfigured();
+  const dlprotectServiceEnabled = isDlprotectServiceConfigured();
 
   const appSections = sites.length > 0
     ? Object.entries(APP_CONFIGS).map(([appKey, appConfig]) =>
@@ -246,7 +246,7 @@ export function renderHomePage(host: string): string {
       <div class="status-bar">
         <span><span class="dot ${sites.length > 0 ? 'on' : ''}"></span>${sites.length} site(s)</span>
         <span><span class="dot ${alldebridEnabled ? 'on' : ''}"></span>AllDebrid</span>
-        <span><span class="dot ${flaresolverrEnabled ? 'on' : ''}"></span>FlareSolverr</span>
+        <span><span class="dot ${dlprotectServiceEnabled ? 'on' : ''}"></span>DL-Protect</span>
       </div>
     </header>
 
@@ -262,6 +262,18 @@ export function renderHomePage(host: string): string {
         <li>Pour l'anime, utiliser le champ <strong>Anime Categories</strong> dans Sonarr</li>
         <li>Laisser API Key vide</li>
       </ol>
+    </div>
+
+    <div class="card help">
+      <h2>Filtre par hébergeur</h2>
+      <p>Ajouter l'hébergeur dans le chemin de l'URL : <code>/api/{site}/{hosters}</code></p>
+      <p style="margin-top: 0.5rem;"><strong>Exemples d'URLs :</strong></p>
+      <ul style="margin-left: 1.25rem; margin-top: 0.5rem; line-height: 1.75;">
+        <li><code>/api/wawacity/1fichier</code> - uniquement 1fichier</li>
+        <li><code>/api/zonetelecharger/turbobit</code> - uniquement Turbobit</li>
+        <li><code>/api/wawacity/1fichier,rapidgator</code> - 1fichier ou Rapidgator</li>
+      </ul>
+      <p style="margin-top: 0.75rem;">Hébergeurs courants : <code>1fichier</code>, <code>turbobit</code>, <code>rapidgator</code>, <code>uptobox</code>, <code>nitroflare</code></p>
     </div>
 
     <footer>

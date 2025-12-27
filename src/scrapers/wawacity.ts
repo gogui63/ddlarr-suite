@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { BaseScraper, parseQuality, parseLanguage, parseSize } from './base.js';
 import { ScraperResult, SearchParams, ContentType } from '../models/torznab.js';
 import { fetchHtml, encodeSearchQuery } from '../utils/http.js';
+import { isNameMatch, extractName } from '../utils/text.js';
 
 type WawaContentType = 'films' | 'series' | 'mangas';
 
@@ -31,116 +32,6 @@ export class WawacityScraper implements BaseScraper {
   readonly name = 'WawaCity';
 
   constructor(public readonly baseUrl: string) {}
-
-  // Normalise une chaîne pour la comparaison (minuscules, sans accents, sans caractères spéciaux)
-  private normalizeForMatch(str: string): string {
-    return str
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Supprime les accents
-      .replace(/[^a-z0-9]/g, ''); // Garde uniquement lettres et chiffres
-  }
-
-  // Calcule la distance de Levenshtein entre deux chaînes
-  private levenshteinDistance(a: string, b: string): number {
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1,     // insertion
-            matrix[i - 1][j] + 1      // suppression
-          );
-        }
-      }
-    }
-
-    return matrix[b.length][a.length];
-  }
-
-  // Vérifie si deux noms de séries sont suffisamment proches
-  private isSeriesNameMatch(searchQuery: string, foundName: string): boolean {
-    const normalizedQuery = this.normalizeForMatch(searchQuery);
-    const normalizedFound = this.normalizeForMatch(foundName);
-
-    // Si les deux sont identiques, c'est un match direct
-    if (normalizedQuery === normalizedFound) {
-      console.log(`[WawaCity] Exact match: "${searchQuery}" = "${foundName}"`);
-      return true;
-    }
-
-    // Calcule la distance de Levenshtein
-    const distance = this.levenshteinDistance(normalizedQuery, normalizedFound);
-
-    // La distance autorisée dépend de la longueur de la recherche
-    // Pour des noms courts (< 10 chars), on autorise max 2 caractères de différence
-    // Pour des noms plus longs, on autorise max 20% de différence
-    const queryLength = normalizedQuery.length;
-    let allowedDistance: number;
-
-    if (queryLength <= 5) {
-      allowedDistance = 1; // "Dexter" (6 chars) → max 1 char de différence
-    } else if (queryLength <= 10) {
-      allowedDistance = 2;
-    } else {
-      allowedDistance = Math.floor(queryLength * 0.2);
-    }
-
-    console.log(`[WawaCity] Comparing "${searchQuery}" with "${foundName}": distance=${distance}, allowed=${allowedDistance}`);
-
-    return distance <= allowedDistance;
-  }
-
-  // Extrait le nom de la série depuis le titre (enlève la partie "Saison X" et langue)
-  private extractSeriesName(titleHtml: string): { seriesName: string; season?: number } {
-    // Enlève les tags HTML
-    const cleanTitle = titleHtml
-      .replace(/<[^>]+>/g, '') // Supprime les tags HTML
-      .replace(/\s+/g, ' ')    // Normalise les espaces
-      .trim();
-
-    // Split sur " - " pour séparer les parties
-    const parts = cleanTitle.split(' - ');
-
-    if (parts.length >= 2) {
-      // La dernière partie est souvent la langue (VF, VOSTFR, etc.) ou la saison
-      // On cherche la partie "Saison X"
-      let seriesName = '';
-      let season: number | undefined;
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i].trim();
-        const seasonMatch = part.match(/^saison\s*(\d+)$/i);
-
-        if (seasonMatch) {
-          season = parseInt(seasonMatch[1], 10);
-          // Le nom de la série est tout ce qui précède
-          seriesName = parts.slice(0, i).join(' - ').trim();
-          break;
-        }
-      }
-
-      // Si on n'a pas trouvé de saison explicite, prend tout sauf le dernier élément
-      if (!seriesName) {
-        seriesName = parts.slice(0, -1).join(' - ').trim();
-      }
-
-      return { seriesName, season };
-    }
-
-    return { seriesName: cleanTitle };
-  }
 
   async search(params: SearchParams): Promise<ScraperResult[]> {
     const results: ScraperResult[] = [];
@@ -278,15 +169,15 @@ export class WawacityScraper implements BaseScraper {
 
         if (!title || !href) return;
 
-        // Extrait le nom de la série et la saison depuis le titre
-        const { seriesName, season: extractedSeason } = this.extractSeriesName(titleHtml);
+        // Extrait le nom et la saison depuis le titre (selon le type de contenu)
+        const { name, season: extractedSeason } = extractName(titleHtml, contentType);
 
-        console.log(`[WawaCity] Parsed title: "${title}" -> series="${seriesName}", season=${extractedSeason}`);
+        console.log(`[WawaCity] Parsed title: "${title}" -> name="${name}", season=${extractedSeason}`);
 
-        // Vérifie que le nom de la série correspond à la recherche (Levenshtein)
-        if (params.q && seriesName) {
-          if (!this.isSeriesNameMatch(params.q, seriesName)) {
-            console.log(`[WawaCity] Skipping "${seriesName}" - too different from "${params.q}"`);
+        // Vérifie que le nom correspond à la recherche (Levenshtein, adapté au type de contenu)
+        if (params.q && name) {
+          if (!isNameMatch(params.q, name, contentType, '[WawaCity]')) {
+            console.log(`[WawaCity] Skipping "${name}" - too different from "${params.q}"`);
             return;
           }
         }
@@ -332,12 +223,12 @@ export class WawacityScraper implements BaseScraper {
 
           if (!title || !href) return;
 
-          // Extrait le nom de la série et la saison
-          const { seriesName, season: extractedSeason } = this.extractSeriesName(titleHtml);
+          // Extrait le nom et la saison (selon le type de contenu)
+          const { name, season: extractedSeason } = extractName(titleHtml, contentType);
 
-          // Vérifie que le nom de la série correspond
-          if (params.q && seriesName) {
-            if (!this.isSeriesNameMatch(params.q, seriesName)) {
+          // Vérifie que le nom correspond (Levenshtein, adapté au type de contenu)
+          if (params.q && name) {
+            if (!isNameMatch(params.q, name, contentType, '[WawaCity]')) {
               return;
             }
           }
@@ -379,6 +270,41 @@ export class WawacityScraper implements BaseScraper {
     const $ = cheerio.load(html);
     const results: ScraperResult[] = [];
 
+    // Extrait l'année depuis .wa-block-body .detail-list li contenant "Année:"
+    let pageYear: string | undefined;
+    $('.wa-block-body .detail-list li').each((_, li) => {
+      const $li = $(li);
+      const spanText = $li.find('span').first().text().trim();
+      if (spanText.includes('Année')) {
+        const yearText = $li.find('b').text().trim() || $li.find('a').text().trim();
+        const yearMatch = yearText.match(/(\d{4})/);
+        if (yearMatch) {
+          pageYear = yearMatch[1];
+          console.log(`[WawaCity] Found production year: ${pageYear}`);
+          return false; // break
+        }
+      }
+    });
+
+    // Extrait l'IMDb ID depuis les liens ou le texte (tt1234567)
+    let imdbId: string | undefined;
+    const imdbMatch = html.match(/imdb\.com\/title\/(tt\d{7,8})/i) || html.match(/\b(tt\d{7,8})\b/);
+    if (imdbMatch) {
+      imdbId = imdbMatch[1];
+      console.log(`[WawaCity] Found IMDb ID: ${imdbId}`);
+    }
+
+    // Filtre par année si le paramètre est fourni et l'année est trouvée dans la page
+    if (params.year && pageYear) {
+      if (pageYear !== params.year) {
+        console.log(`[WawaCity] Skipping "${searchResult.title}" - year ${pageYear} != ${params.year}`);
+        return [];
+      }
+      console.log(`[WawaCity] Year filter passed: ${pageYear}`);
+    } else if (params.year && !pageYear) {
+      console.log(`[WawaCity] Year filter requested (${params.year}) but no year found on page - not filtering`);
+    }
+
     // Parse le tableau #DDLLinkѕ (avec le ѕ cyrillique)
     const $table = $('#DDLLinkѕ, #DDLLinks');
 
@@ -418,7 +344,10 @@ export class WawacityScraper implements BaseScraper {
       const $link = $linkCell.find('a').first();
       const downloadLink = $link.attr('href');
 
-      if (!downloadLink) return;
+      if (!downloadLink) {
+        console.error(`[WawaCity] No download link found`);
+        return;
+      }
 
       // Colonne 2: hébergeur
       const hoster = $(cells[1]).text().trim();
@@ -426,6 +355,7 @@ export class WawacityScraper implements BaseScraper {
 
       // Skip les liens "Anonyme" (pub)
       if (hosterLower === 'anonyme') {
+        console.error(`[WawaCity] "Anonyme" hoster skipped`);
         return;
       }
 
@@ -433,8 +363,10 @@ export class WawacityScraper implements BaseScraper {
       if (params.hoster) {
         const allowedHosters = params.hoster.toLowerCase().split(',').map(h => h.trim());
         if (!allowedHosters.some(allowed => hosterLower.includes(allowed) || allowed.includes(hosterLower))) {
+          console.log(`[WawaCity] Skipping hoster "${hoster}" - not in allowed list: ${params.hoster}`);
           return;
         }
+        console.log(`[WawaCity] Accepted hoster "${hoster}" - in allowed list: ${params.hoster}`);
       }
 
       // Colonne 3: taille
@@ -454,24 +386,43 @@ export class WawacityScraper implements BaseScraper {
       const quality = searchResult.quality || parseQuality(searchResult.title);
       const language = searchResult.language || parseLanguage(searchResult.title);
 
-      // Construit le titre
-      let title = searchResult.title.split(' - ')[0].trim(); // Nom de la série/film sans "Saison X - VF"
-      if (searchResult.season) title += ` S${String(searchResult.season).padStart(2, '0')}`;
-      if (episode !== undefined) title += `E${String(episode).padStart(2, '0')}`;
-      if (quality) title += ` ${quality}`;
-      if (language) title += ` ${language}`;
-      if (hoster) title += ` [${hoster}]`;
+      // Construit le titre au format parsable par Radarr/Sonarr
+      // Films: Titre.Année.Qualité.Language.Hoster
+      // Séries: Titre.S01E05.Qualité.Language.Hoster
+      // Nettoie le nom: enlève les crochets [xxx], les tirets et leur contenu, et les espaces multiples
+      const baseName = searchResult.title
+        .split(' - ')[0]
+        .replace(/\[.*?\]/g, '')  // Enlève [HDLIGHT 1080p] etc.
+        .replace(/\s+/g, ' ')     // Normalise les espaces
+        .trim()
+        .replace(/\s+/g, '.');    // Remplace les espaces par des points
+      const parts: string[] = [baseName];
+
+      if (contentType === 'movie' && pageYear) {
+        parts.push(pageYear);
+      }
+      if (searchResult.season) {
+        parts.push(`S${String(searchResult.season).padStart(2, '0')}${episode !== undefined ? `E${String(episode).padStart(2, '0')}` : ''}`);
+      }
+      if (quality) parts.push(quality.replace(/\s+/g, '.'));
+      if (language) parts.push(language.replace(/\s+/g, '.'));
+      if (hoster) parts.push(hoster.replace(/\s+/g, '.'));
+
+      const title = parts.join('.');
 
       results.push({
         title,
         link: downloadLink,
+        pageUrl: searchResult.pageUrl,
         size,
         quality,
         language,
+        imdbId,
         season: searchResult.season,
         episode,
         contentType,
         pubDate: new Date(),
+        year: pageYear ? parseInt(pageYear, 10) : undefined,
       });
     });
 

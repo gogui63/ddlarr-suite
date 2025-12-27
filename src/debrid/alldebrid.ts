@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { config } from '../config.js';
+import { isDlProtectLink, resolveDlProtectLink, cleanDlProtectUrl } from '../utils/dlprotect.js';
 
 // Domains that need redirector resolution first
 const REDIRECTOR_DOMAINS = [
@@ -212,46 +213,67 @@ export class AllDebridClient {
   }
 
   async unlockLink(link: string, originalLink?: string): Promise<string> {
-    // Always clean dl-protect links, even without AllDebrid
+    const cleanedLink = this.cleanDlProtectLink(originalLink || link);
+
+    // If AllDebrid is not configured, use Playwright resolver for dl-protect links
     if (!this.apiKey) {
-      return this.cleanDlProtectLink(link);
+      if (isDlProtectLink(link)) {
+        console.log(`[AllDebrid] Not configured, using Botasaurus for: ${link}`);
+        return resolveDlProtectLink(link);
+      }
+      return cleanedLink;
     }
 
-    // Keep track of the original link for fallback (cleaned if dl-protect)
-    const fallbackLink = this.cleanDlProtectLink(originalLink || link);
-
     try {
-      // If it's a protected link (dl-protect), try to resolve it via AllDebrid
+      // If it's a protected link (dl-protect), try to resolve it via AllDebrid first
       if (this.needsRedirector(link)) {
         const resolvedLinks = await this.resolveRedirector(link);
         if (resolvedLinks.length > 0 && resolvedLinks[0] !== link) {
-          // Try to unlock the resolved link, passing original for fallback
+          // AllDebrid resolved successfully, try to unlock the resolved link
           return this.unlockLink(resolvedLinks[0], link);
         }
-        // AllDebrid couldn't resolve, return cleaned dl-protect link
-        return fallbackLink;
+
+        // AllDebrid couldn't resolve, fallback to Playwright
+        console.log(`[AllDebrid] Redirector failed, using Playwright for: ${link}`);
+        const playwrightResolved = await resolveDlProtectLink(link);
+
+        // If Playwright resolved to a non-dl-protect link, try to debrid it
+        if (playwrightResolved && !isDlProtectLink(playwrightResolved)) {
+          const debriddedLink = await this.debridLink(playwrightResolved);
+          if (debriddedLink) {
+            return debriddedLink;
+          }
+          // Debrid failed, return Playwright-resolved link
+          return playwrightResolved;
+        }
+
+        // Playwright couldn't resolve either, return cleaned link
+        return cleanedLink;
       }
 
-      // Try to debrid the link
+      // Not a dl-protect link, try to debrid directly
       const debriddedLink = await this.debridLink(link);
       if (debriddedLink) {
         return debriddedLink;
       }
 
       // Debrid failed, return original link (cleaned)
-      console.log(`Debrid failed, returning original link: ${fallbackLink}`);
-      return fallbackLink;
+      console.log(`[AllDebrid] Debrid failed, returning original link: ${cleanedLink}`);
+      return cleanedLink;
     } catch (error) {
-      console.error('AllDebrid error:', error);
-      return fallbackLink;
+      console.error('[AllDebrid] Error:', error);
+
+      // On error, try Playwright for dl-protect links
+      if (isDlProtectLink(link)) {
+        console.log(`[AllDebrid] Error occurred, using Playwright fallback for: ${link}`);
+        return resolveDlProtectLink(link);
+      }
+
+      return cleanedLink;
     }
   }
 
   async unlockLinks(links: string[]): Promise<string[]> {
-    if (!this.apiKey) {
-      return links;
-    }
-
     const results = await Promise.allSettled(
       links.map((link) => this.unlockLink(link))
     );

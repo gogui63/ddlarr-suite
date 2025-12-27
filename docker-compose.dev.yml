@@ -1,0 +1,21 @@
+# Development override - use with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  ddl-torznab:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src:ro
+      - ./dist:/app/dist
+    ports:
+      - "9117:9117"
+      - "9229:9229"  # Node.js debug port
+    command: ["node", "--inspect=0.0.0.0:9229", "dist/index.js"]
+
+  dlprotect-resolver:
+    environment:
+      - FLASK_DEBUG=1
+    ports:
+      - "5000:5000"  # Expose for direct testing
