@@ -209,6 +209,8 @@ Voir `.env.example` pour la liste complète.
 | `BLACKHOLE_PATH` | Dossier blackhole | - |
 | `ALLDEBRID_API_KEY` | Clé API AllDebrid | - |
 | `DLPROTECT_RESOLVE_AT` | Où résoudre les liens dl-protect (voir ci-dessous) | indexer |
+| `SEARCH_MAX_PAGES` | Nombre max de pages à crawler par recherche | 5 |
+| `DISABLE_REMOTE_DL_PROTECT_CACHE` | Désactiver le cache distant pour dl-protect | false |
 | `DEBUG` | Mode debug (voir ci-dessous) | false |
 | `DS_ENABLED` | Activer Download Station | false |
 | `JD_ENABLED` | Activer JDownloader | false |
@@ -240,6 +242,34 @@ En mode debug (`DEBUG=true`), les fichiers sont **déplacés** vers le dossier `
 # Dans .env
 DEBUG=true
 ```
+
+### Recherche intelligente via IMDB
+
+Quand Radarr/Sonarr fournit un IMDB ID, l'indexeur utilise l'API IMDB (https://imdbapi.dev) pour récupérer :
+- Le **titre original** du film/série
+- Le **titre français**
+
+Ces titres sont utilisés en plus de la requête originale pour une recherche plus complète, notamment pour les films français avec des accents.
+
+**Exemple :**
+```
+Radarr envoie: imdbid=0082183
+→ API IMDB retourne: originalTitle="La chèvre", frenchTitle="La Chèvre"
+→ Recherches effectuées: ["la chèvre"]
+```
+
+### Cache distant dl-protect
+
+Le service de résolution dl-protect utilise un cache distant partagé entre utilisateurs. Cela permet d'éviter de résoudre plusieurs fois le même lien.
+
+Pour désactiver le cache distant (par exemple si le serveur est inaccessible) :
+
+```bash
+# Dans .env
+DISABLE_REMOTE_DL_PROTECT_CACHE=true
+```
+
+> Le cache local reste actif même si le cache distant est désactivé.
 
 ## Catégories Torznab
 

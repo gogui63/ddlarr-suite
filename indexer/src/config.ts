@@ -16,6 +16,10 @@ export const config = {
   dlprotectServiceUrl: process.env.DLPROTECT_SERVICE_URL || 'http://localhost:5000',
   // Where to resolve dl-protect links: 'indexer' or 'downloader'
   dlprotectResolveAt: (process.env.DLPROTECT_RESOLVE_AT || 'indexer') as 'indexer' | 'downloader',
+  // Maximum number of pages to crawl per search (per provider)
+  searchMaxPages: parseInt(process.env.SEARCH_MAX_PAGES || '5', 10),
+  // Disable cache for remote dl-protect service
+  disableRemoteDlProtectCache: process.env.DISABLE_REMOTE_DL_PROTECT_CACHE === 'true',
 } as const;
 
 export type SiteType = 'wawacity' | 'zonetelecharger';

@@ -2,7 +2,9 @@ import * as cheerio from 'cheerio';
 import { BaseScraper, parseQuality, parseLanguage, parseSize } from './base.js';
 import { ScraperResult, SearchParams, ContentType } from '../models/torznab.js';
 import { fetchHtml, encodeSearchQuery } from '../utils/http.js';
-import { isNameMatch, extractName, generateAccentVariants } from '../utils/text.js';
+import { isNameMatch, extractName } from '../utils/text.js';
+import { getSearchQueriesFromImdb } from '../utils/imdb.js';
+import { config } from '../config.js';
 
 type WawaContentType = 'films' | 'series' | 'mangas';
 
@@ -62,22 +64,35 @@ export class WawacityScraper implements BaseScraper {
   }
 
   private async searchByType(params: SearchParams, contentType: ContentType): Promise<ScraperResult[]> {
-    if (!params.q) return [];
+    if (!params.q && !params.imdbid) return [];
 
     const wawaType = CONTENT_TYPE_MAP[contentType];
 
-    // Génère les variantes avec accents français
-    const searchVariants = generateAccentVariants(params.q, 5);
-    console.log(`[WawaCity] Search variants for "${params.q}":`, searchVariants);
+    // Si un IMDB ID est fourni, récupère les titres depuis l'API IMDB
+    // Sinon utilise la requête originale
+    let searchQueries: string[];
+    if (params.imdbid) {
+      console.log(`[WawaCity] IMDB ID provided: ${params.imdbid}`);
+      searchQueries = await getSearchQueriesFromImdb(params.imdbid, params.q);
+    } else {
+      searchQueries = params.q ? [params.q] : [];
+    }
+
+    if (searchQueries.length === 0) {
+      console.log(`[WawaCity] No search queries available`);
+      return [];
+    }
+
+    console.log(`[WawaCity] Search queries for "${params.q || params.imdbid}":`, searchQueries);
 
     try {
       // Collecte tous les résultats de recherche pour toutes les variantes
       const allSearchResults: SearchResult[] = [];
       const seenPageUrls = new Set<string>();
 
-      // Recherche pour chaque variante (en parallèle)
-      const variantPromises = searchVariants.map(async (variant) => {
-        let searchTerm = variant;
+      // Recherche pour chaque query (en parallèle)
+      const queryPromises = searchQueries.map(async (query) => {
+        let searchTerm = query;
         if (params.season) {
           searchTerm += ` Saison ${params.season}`;
         }
@@ -91,20 +106,20 @@ export class WawacityScraper implements BaseScraper {
         }
 
         const baseSearchUrl = `${this.baseUrl}/?p=${wawaType}&linkType=hasDownloadLink&search=${encodeSearchQuery(searchTerm)}`;
-        console.log(`[WawaCity] Searching ${contentType} with variant "${variant}": ${baseSearchUrl}`);
+        console.log(`[WawaCity] Searching ${contentType} with query "${query}": ${baseSearchUrl}`);
 
         try {
           return await this.fetchAllPages(baseSearchUrl, contentType, params);
         } catch (error) {
-          console.error(`[WawaCity] Error searching variant "${variant}":`, error);
+          console.error(`[WawaCity] Error searching query "${query}":`, error);
           return [];
         }
       });
 
-      const variantResults = await Promise.all(variantPromises);
+      const queryResults = await Promise.all(queryPromises);
 
       // Déduplique par URL de page de détail
-      for (const results of variantResults) {
+      for (const results of queryResults) {
         for (const result of results) {
           if (!seenPageUrls.has(result.pageUrl)) {
             seenPageUrls.add(result.pageUrl);
@@ -113,7 +128,7 @@ export class WawacityScraper implements BaseScraper {
         }
       }
 
-      console.log(`[WawaCity] Found ${allSearchResults.length} unique search results across all variants`);
+      console.log(`[WawaCity] Found ${allSearchResults.length} unique search results across all queries`);
 
       if (allSearchResults.length === 0) {
         return [];
@@ -145,7 +160,7 @@ export class WawacityScraper implements BaseScraper {
   private async fetchAllPages(baseSearchUrl: string, contentType: ContentType, params: SearchParams): Promise<SearchResult[]> {
     const allResults: SearchResult[] = [];
     let currentPage = 1;
-    const maxPages = 5; // Limite pour éviter trop de requêtes
+    const maxPages = config.searchMaxPages;
 
     while (currentPage <= maxPages) {
       const pageUrl = currentPage === 1 ? baseSearchUrl : `${baseSearchUrl}&page=${currentPage}`;

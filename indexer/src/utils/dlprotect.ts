@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { config } from '../config.js';
 
 // Botasaurus service URL
-const DLPROTECT_SERVICE_URL = process.env.DLPROTECT_SERVICE_URL || 'http://localhost:5000';
+const DLPROTECT_SERVICE_URL = config.dlprotectServiceUrl;
 
 // Domains that need resolution
 const DLPROTECT_DOMAINS = [
@@ -54,7 +55,10 @@ export async function resolveDlProtectLink(url: string): Promise<string> {
       error?: string;
     }>(
       `${DLPROTECT_SERVICE_URL}/resolve`,
-      { url: cleanedUrl },
+      {
+        url: cleanedUrl,
+        disable_remote_cache: config.disableRemoteDlProtectCache,
+      },
       {
         timeout: 60000, // 60 seconds timeout
         headers: {

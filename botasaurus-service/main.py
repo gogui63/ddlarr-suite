@@ -363,6 +363,10 @@ def resolve():
         return jsonify({'error': 'Missing url parameter'}), 400
 
     url = data['url']
+    disable_remote_cache = data.get('disable_remote_cache', False)
+
+    if disable_remote_cache:
+        print(f"[DLProtect] Remote cache disabled for this request")
 
     # 1. Check local cache first
     cached_data = load_from_cache(url)
@@ -373,14 +377,15 @@ def resolve():
             'cache_source': 'local'
         })
 
-    # 2. Check remote cache
-    remote_result = load_from_remote_cache(url)
-    if remote_result:
-        return jsonify({
-            'resolved_url': remote_result,
-            'cached': True,
-            'cache_source': 'remote'
-        })
+    # 2. Check remote cache (unless disabled)
+    if not disable_remote_cache:
+        remote_result = load_from_remote_cache(url)
+        if remote_result:
+            return jsonify({
+                'resolved_url': remote_result,
+                'cached': True,
+                'cache_source': 'remote'
+            })
 
     # 3. Resolve with Botasaurus
     try:
@@ -390,8 +395,9 @@ def resolve():
             # 4. Save to local cache
             save_to_cache(url, resolved_url)
 
-            # 5. Save to remote cache
-            save_to_remote_cache(url, resolved_url)
+            # 5. Save to remote cache (unless disabled)
+            if not disable_remote_cache:
+                save_to_remote_cache(url, resolved_url)
 
             return jsonify({
                 'resolved_url': resolved_url,
