@@ -32,6 +32,25 @@ export interface Aria2Config {
   dir?: string; // Download directory
 }
 
+export interface PyLoadConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  useSsl: boolean;
+}
+
+export interface CurlConfig {
+  enabled: boolean;
+  destinationPath: string; // Download destination path
+}
+
+export interface WgetConfig {
+  enabled: boolean;
+  destinationPath: string; // Download destination path
+}
+
 export interface Config {
   blackholePath: string;
   processedPath: string; // Where to move processed torrents
@@ -41,6 +60,9 @@ export interface Config {
   downloadStation: DownloadStationConfig;
   jdownloader: JDownloaderConfig;
   aria2: Aria2Config;
+  pyload: PyLoadConfig;
+  curl: CurlConfig;
+  wget: WgetConfig;
 }
 
 const CONFIG_PATH = process.env.CONFIG_PATH || '/config/config.json';
@@ -76,6 +98,22 @@ const defaultConfig: Config = {
     secret: process.env.ARIA2_SECRET || '',
     dir: process.env.ARIA2_DIR || '',
   },
+  pyload: {
+    enabled: process.env.PYLOAD_ENABLED === 'true',
+    host: process.env.PYLOAD_HOST || 'localhost',
+    port: parseInt(process.env.PYLOAD_PORT || '8000', 10),
+    username: process.env.PYLOAD_USERNAME || '',
+    password: process.env.PYLOAD_PASSWORD || '',
+    useSsl: process.env.PYLOAD_USE_SSL === 'true',
+  },
+  curl: {
+    enabled: process.env.CURL_ENABLED === 'true',
+    destinationPath: process.env.CURL_DESTINATION || '/downloads',
+  },
+  wget: {
+    enabled: process.env.WGET_ENABLED === 'true',
+    destinationPath: process.env.WGET_DESTINATION || '/downloads',
+  },
 };
 
 let currentConfig: Config = { ...defaultConfig };
@@ -99,6 +137,9 @@ export function loadConfig(): Config {
       if (savedConfig.aria2?.secret === '********') {
         delete savedConfig.aria2.secret;
       }
+      if (savedConfig.pyload?.password === '********') {
+        delete savedConfig.pyload.password;
+      }
 
       // Deep merge for nested objects
       // Note: dlprotectResolveAt always comes from env var, never from saved config
@@ -109,6 +150,9 @@ export function loadConfig(): Config {
         downloadStation: { ...defaultConfig.downloadStation, ...savedConfig.downloadStation },
         jdownloader: { ...defaultConfig.jdownloader, ...savedConfig.jdownloader },
         aria2: { ...defaultConfig.aria2, ...savedConfig.aria2 },
+        pyload: { ...defaultConfig.pyload, ...savedConfig.pyload },
+        curl: { ...defaultConfig.curl, ...savedConfig.curl },
+        wget: { ...defaultConfig.wget, ...savedConfig.wget },
       };
       console.log('[Config] Loaded from file:', CONFIG_PATH);
     } else {

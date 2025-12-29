@@ -80,7 +80,21 @@ services:
       - ARIA2_PORT=${ARIA2_PORT:-6800}
       - ARIA2_SECRET=${ARIA2_SECRET:-}
       - ARIA2_DIR=${ARIA2_DIR:-}
+      # pyLoad
+      - PYLOAD_ENABLED=${PYLOAD_ENABLED:-false}
+      - PYLOAD_HOST=${PYLOAD_HOST:-localhost}
+      - PYLOAD_PORT=${PYLOAD_PORT:-8000}
+      - PYLOAD_USERNAME=${PYLOAD_USERNAME:-}
+      - PYLOAD_PASSWORD=${PYLOAD_PASSWORD:-}
+      - PYLOAD_USE_SSL=${PYLOAD_USE_SSL:-false}
+      # curl (direct download)
+      - CURL_ENABLED=${CURL_ENABLED:-false}
+      - CURL_DESTINATION=${CURL_DESTINATION:-/downloads}
+      # wget (direct download)
+      - WGET_ENABLED=${WGET_ENABLED:-false}
+      - WGET_DESTINATION=${WGET_DESTINATION:-/downloads}
     volumes:
       - ${DOWNLOADER_CONFIG_PATH:-./downloader-config}:/config
       - ${BLACKHOLE_PATH:-./blackhole}:/blackhole
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
     restart: unless-stopped

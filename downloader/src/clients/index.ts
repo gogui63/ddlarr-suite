@@ -2,12 +2,25 @@ import { DownloadClient } from './base.js';
 import { DownloadStationClient } from './downloadstation.js';
 import { JDownloaderClient } from './jdownloader.js';
 import { Aria2Client } from './aria2.js';
+import { PyLoadClient } from './pyload.js';
+import { CurlClient, getActiveDownloads as getCurlDownloads, DownloadProgress } from './curl.js';
+import { WgetClient, getWgetActiveDownloads } from './wget.js';
 
 export const clients: DownloadClient[] = [
   new DownloadStationClient(),
   new JDownloaderClient(),
   new Aria2Client(),
+  new PyLoadClient(),
+  new CurlClient(),
+  new WgetClient(),
 ];
+
+// Export progress tracking for curl and wget
+export function getDirectDownloads(): DownloadProgress[] {
+  return [...getCurlDownloads(), ...getWgetActiveDownloads()];
+}
+
+export type { DownloadProgress } from './curl.js';
 
 export function getEnabledClients(): DownloadClient[] {
   return clients.filter(client => client.isEnabled());

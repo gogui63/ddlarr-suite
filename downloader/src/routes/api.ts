@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { getConfig, saveConfig, Config } from '../utils/config.js';
-import { clients, getEnabledClients } from '../clients/index.js';
+import { clients, getEnabledClients, getDirectDownloads } from '../clients/index.js';
 import { stopWatcher, startWatcher } from '../watcher.js';
 import { alldebrid } from '../utils/alldebrid.js';
 
@@ -19,6 +19,10 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
       jdownloader: {
         ...config.jdownloader,
         password: config.jdownloader.password ? '********' : '',
+      },
+      pyload: {
+        ...config.pyload,
+        password: config.pyload.password ? '********' : '',
       },
     };
   });
@@ -54,6 +58,21 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
         aria2: {
           ...currentConfig.aria2,
           ...newConfig.aria2,
+        },
+        pyload: {
+          ...currentConfig.pyload,
+          ...newConfig.pyload,
+          password: newConfig.pyload?.password === '********'
+            ? currentConfig.pyload.password
+            : (newConfig.pyload?.password || currentConfig.pyload.password),
+        },
+        curl: {
+          ...currentConfig.curl,
+          ...newConfig.curl,
+        },
+        wget: {
+          ...currentConfig.wget,
+          ...newConfig.wget,
         },
       };
 
@@ -115,6 +134,21 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
         aria2: {
           ...currentConfig.aria2,
           ...formConfig.aria2,
+        },
+        pyload: {
+          ...currentConfig.pyload,
+          ...formConfig.pyload,
+          password: formConfig.pyload?.password === '********'
+            ? currentConfig.pyload.password
+            : (formConfig.pyload?.password || currentConfig.pyload.password),
+        },
+        curl: {
+          ...currentConfig.curl,
+          ...formConfig.curl,
+        },
+        wget: {
+          ...currentConfig.wget,
+          ...formConfig.wget,
         },
       };
       saveConfig(tempConfig);
@@ -186,6 +220,13 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
       enabledClients: getEnabledClients().map(c => c.name),
       blackholePath: getConfig().blackholePath,
       alldebridConfigured: alldebrid.isConfigured(),
+    };
+  });
+
+  // Get active downloads (curl/wget progress)
+  app.get('/api/downloads', async () => {
+    return {
+      downloads: getDirectDownloads(),
     };
   });
 }
