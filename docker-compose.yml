@@ -54,10 +54,16 @@ services:
       - CONFIG_PATH=/config/config.json
       - BLACKHOLE_PATH=/blackhole
       - PROCESSED_PATH=/blackhole/processed
-      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
       - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
       - DLPROTECT_RESOLVE_AT=${DLPROTECT_RESOLVE_AT:-indexer}
       - DEBUG=${DEBUG:-false}
+      # Debrid Services (multiple services can be enabled - fallback in order)
+      - ALLDEBRID_ENABLED=${ALLDEBRID_ENABLED:-false}
+      - ALLDEBRID_API_KEY=${ALLDEBRID_API_KEY:-}
+      - REALDEBRID_ENABLED=${REALDEBRID_ENABLED:-false}
+      - REALDEBRID_API_KEY=${REALDEBRID_API_KEY:-}
+      - PREMIUMIZE_ENABLED=${PREMIUMIZE_ENABLED:-false}
+      - PREMIUMIZE_API_KEY=${PREMIUMIZE_API_KEY:-}
       # Download Station
       - DS_ENABLED=${DS_ENABLED:-false}
       - DS_HOST=${DS_HOST:-}

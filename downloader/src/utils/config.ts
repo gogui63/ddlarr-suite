@@ -51,12 +51,35 @@ export interface WgetConfig {
   destinationPath: string; // Download destination path
 }
 
+// Debrid service configs
+export interface AllDebridConfig {
+  enabled: boolean;
+  apiKey: string;
+}
+
+export interface RealDebridConfig {
+  enabled: boolean;
+  apiKey: string;
+}
+
+export interface PremiumizeConfig {
+  enabled: boolean;
+  apiKey: string;
+}
+
+export interface DebridConfig {
+  alldebrid: AllDebridConfig;
+  realdebrid: RealDebridConfig;
+  premiumize: PremiumizeConfig;
+}
+
 export interface Config {
   blackholePath: string;
   processedPath: string; // Where to move processed torrents
   scanInterval: number; // Seconds between scans
-  alldebridApiKey?: string; // AllDebrid API key for debriding links
+  alldebridApiKey?: string; // DEPRECATED: Use debrid.alldebrid.apiKey instead
   dlprotectResolveAt: 'indexer' | 'downloader'; // Where to resolve dl-protect links
+  debrid: DebridConfig;
   downloadStation: DownloadStationConfig;
   jdownloader: JDownloaderConfig;
   aria2: Aria2Config;
@@ -71,8 +94,22 @@ const defaultConfig: Config = {
   blackholePath: process.env.BLACKHOLE_PATH || '/blackhole',
   processedPath: process.env.PROCESSED_PATH || '/blackhole/processed',
   scanInterval: parseInt(process.env.SCAN_INTERVAL || '10', 10),
-  alldebridApiKey: process.env.ALLDEBRID_API_KEY || '',
+  alldebridApiKey: process.env.ALLDEBRID_API_KEY || '', // DEPRECATED
   dlprotectResolveAt: (process.env.DLPROTECT_RESOLVE_AT || 'indexer') as 'indexer' | 'downloader',
+  debrid: {
+    alldebrid: {
+      enabled: process.env.ALLDEBRID_ENABLED === 'true' || !!process.env.ALLDEBRID_API_KEY,
+      apiKey: process.env.ALLDEBRID_API_KEY || '',
+    },
+    realdebrid: {
+      enabled: process.env.REALDEBRID_ENABLED === 'true',
+      apiKey: process.env.REALDEBRID_API_KEY || '',
+    },
+    premiumize: {
+      enabled: process.env.PREMIUMIZE_ENABLED === 'true',
+      apiKey: process.env.PREMIUMIZE_API_KEY || '',
+    },
+  },
   downloadStation: {
     enabled: process.env.DS_ENABLED === 'true',
     host: process.env.DS_HOST || '',
@@ -140,6 +177,16 @@ export function loadConfig(): Config {
       if (savedConfig.pyload?.password === '********') {
         delete savedConfig.pyload.password;
       }
+      // Debrid API keys
+      if (savedConfig.debrid?.alldebrid?.apiKey === '********') {
+        delete savedConfig.debrid.alldebrid.apiKey;
+      }
+      if (savedConfig.debrid?.realdebrid?.apiKey === '********') {
+        delete savedConfig.debrid.realdebrid.apiKey;
+      }
+      if (savedConfig.debrid?.premiumize?.apiKey === '********') {
+        delete savedConfig.debrid.premiumize.apiKey;
+      }
 
       // Deep merge for nested objects
       // Note: dlprotectResolveAt always comes from env var, never from saved config
@@ -147,6 +194,11 @@ export function loadConfig(): Config {
         ...defaultConfig,
         ...savedConfig,
         dlprotectResolveAt: defaultConfig.dlprotectResolveAt, // Always use env var
+        debrid: {
+          alldebrid: { ...defaultConfig.debrid.alldebrid, ...savedConfig.debrid?.alldebrid },
+          realdebrid: { ...defaultConfig.debrid.realdebrid, ...savedConfig.debrid?.realdebrid },
+          premiumize: { ...defaultConfig.debrid.premiumize, ...savedConfig.debrid?.premiumize },
+        },
         downloadStation: { ...defaultConfig.downloadStation, ...savedConfig.downloadStation },
         jdownloader: { ...defaultConfig.jdownloader, ...savedConfig.jdownloader },
         aria2: { ...defaultConfig.aria2, ...savedConfig.aria2 },

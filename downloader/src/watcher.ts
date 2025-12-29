@@ -4,7 +4,7 @@ import chokidar from 'chokidar';
 import { getConfig } from './utils/config.js';
 import { extractLinkFromTorrent, extractNameFromTorrent } from './utils/torrent.js';
 import { addDownloadToAll, getEnabledClients } from './clients/index.js';
-import { alldebrid } from './utils/alldebrid.js';
+import { debridLink, isAnyDebridEnabled, getEnabledDebridServices } from './debrid/index.js';
 import { isDlProtectLink, resolveDlProtectLink } from './utils/dlprotect.js';
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
@@ -98,17 +98,17 @@ async function processFile(filePath: string): Promise<void> {
     }
   }
 
-  // Try to debrid the link if AllDebrid is configured
-  if (alldebrid.isConfigured()) {
+  // Try to debrid the link if any debrid service is enabled
+  if (isAnyDebridEnabled()) {
     console.log(`[Watcher] Attempting to debrid link...`);
     try {
-      const debridedLink = await alldebrid.debridLink(link);
+      const debridedLink = await debridLink(link);
       if (debridedLink !== link) {
         console.log(`[Watcher] Debrided link: ${debridedLink}`);
         link = debridedLink;
       }
     } catch (error: any) {
-      console.error(`[Watcher] AllDebrid error: ${error.message}`);
+      console.error(`[Watcher] Debrid error: ${error.message}`);
       // Continue with original link (debrid is optional)
     }
   }
@@ -176,10 +176,11 @@ export function startWatcher(): void {
   }
 
   const enabledClients = getEnabledClients();
+  const enabledDebridServices = getEnabledDebridServices();
   console.log(`[Watcher] Debug mode: ${DEBUG ? 'enabled (files moved to processed/)' : 'disabled (files deleted)'}`);
   console.log(`[Watcher] Enabled clients: ${enabledClients.map(c => c.name).join(', ') || 'none'}`);
   console.log(`[Watcher] DL-Protect resolution: ${config.dlprotectResolveAt === 'downloader' ? 'enabled (in downloader)' : 'disabled (done in indexer)'}`);
-  console.log(`[Watcher] AllDebrid: ${alldebrid.isConfigured() ? 'configured' : 'not configured'}`);
+  console.log(`[Watcher] Debrid services: ${enabledDebridServices.length > 0 ? enabledDebridServices.map(s => s.name).join(', ') : 'none configured'}`);
 
   if (enabledClients.length === 0) {
     console.warn('[Watcher] No download clients enabled! Configure clients via web UI.');

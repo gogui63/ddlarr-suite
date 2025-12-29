@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { getConfig, saveConfig, Config } from '../utils/config.js';
 import { clients, getEnabledClients, getDirectDownloads } from '../clients/index.js';
 import { stopWatcher, startWatcher } from '../watcher.js';
-import { alldebrid } from '../utils/alldebrid.js';
+import { debridServices, getEnabledDebridServices, testDebridService } from '../debrid/index.js';
 
 export async function apiRoutes(app: FastifyInstance): Promise<void> {
   // Get current config
@@ -12,6 +12,20 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
     return {
       ...config,
       alldebridApiKey: config.alldebridApiKey ? '********' : '',
+      debrid: {
+        alldebrid: {
+          ...config.debrid.alldebrid,
+          apiKey: config.debrid.alldebrid.apiKey ? '********' : '',
+        },
+        realdebrid: {
+          ...config.debrid.realdebrid,
+          apiKey: config.debrid.realdebrid.apiKey ? '********' : '',
+        },
+        premiumize: {
+          ...config.debrid.premiumize,
+          apiKey: config.debrid.premiumize.apiKey ? '********' : '',
+        },
+      },
       downloadStation: {
         ...config.downloadStation,
         password: config.downloadStation.password ? '********' : '',
@@ -40,6 +54,29 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
         alldebridApiKey: newConfig.alldebridApiKey === '********'
           ? currentConfig.alldebridApiKey
           : (newConfig.alldebridApiKey ?? currentConfig.alldebridApiKey),
+        debrid: {
+          alldebrid: {
+            ...currentConfig.debrid.alldebrid,
+            ...newConfig.debrid?.alldebrid,
+            apiKey: newConfig.debrid?.alldebrid?.apiKey === '********'
+              ? currentConfig.debrid.alldebrid.apiKey
+              : (newConfig.debrid?.alldebrid?.apiKey ?? currentConfig.debrid.alldebrid.apiKey),
+          },
+          realdebrid: {
+            ...currentConfig.debrid.realdebrid,
+            ...newConfig.debrid?.realdebrid,
+            apiKey: newConfig.debrid?.realdebrid?.apiKey === '********'
+              ? currentConfig.debrid.realdebrid.apiKey
+              : (newConfig.debrid?.realdebrid?.apiKey ?? currentConfig.debrid.realdebrid.apiKey),
+          },
+          premiumize: {
+            ...currentConfig.debrid.premiumize,
+            ...newConfig.debrid?.premiumize,
+            apiKey: newConfig.debrid?.premiumize?.apiKey === '********'
+              ? currentConfig.debrid.premiumize.apiKey
+              : (newConfig.debrid?.premiumize?.apiKey ?? currentConfig.debrid.premiumize.apiKey),
+          },
+        },
         downloadStation: {
           ...currentConfig.downloadStation,
           ...newConfig.downloadStation,
@@ -116,6 +153,29 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
       const tempConfig: Config = {
         ...currentConfig,
         ...formConfig,
+        debrid: {
+          alldebrid: {
+            ...currentConfig.debrid.alldebrid,
+            ...formConfig.debrid?.alldebrid,
+            apiKey: formConfig.debrid?.alldebrid?.apiKey === '********'
+              ? currentConfig.debrid.alldebrid.apiKey
+              : (formConfig.debrid?.alldebrid?.apiKey ?? currentConfig.debrid.alldebrid.apiKey),
+          },
+          realdebrid: {
+            ...currentConfig.debrid.realdebrid,
+            ...formConfig.debrid?.realdebrid,
+            apiKey: formConfig.debrid?.realdebrid?.apiKey === '********'
+              ? currentConfig.debrid.realdebrid.apiKey
+              : (formConfig.debrid?.realdebrid?.apiKey ?? currentConfig.debrid.realdebrid.apiKey),
+          },
+          premiumize: {
+            ...currentConfig.debrid.premiumize,
+            ...formConfig.debrid?.premiumize,
+            apiKey: formConfig.debrid?.premiumize?.apiKey === '********'
+              ? currentConfig.debrid.premiumize.apiKey
+              : (formConfig.debrid?.premiumize?.apiKey ?? currentConfig.debrid.premiumize.apiKey),
+          },
+        },
         downloadStation: {
           ...currentConfig.downloadStation,
           ...formConfig.downloadStation,
@@ -172,43 +232,60 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // Save AllDebrid API key only
-  app.post<{ Body: { alldebridApiKey?: string } }>('/api/config/alldebrid', async (request, reply) => {
-    try {
-      const { alldebridApiKey } = request.body;
-
-      if (!alldebridApiKey || alldebridApiKey === '********') {
-        reply.status(400);
-        return { success: false, error: 'Invalid API key' };
-      }
-
-      const currentConfig = getConfig();
-      saveConfig({ ...currentConfig, alldebridApiKey });
-
-      return { success: true };
-    } catch (error) {
-      reply.status(500);
-      return { success: false, error: String(error) };
-    }
+  // Get debrid services status
+  app.get('/api/debrid', async () => {
+    return debridServices.map(service => ({
+      name: service.name,
+      configured: service.isConfigured(),
+      enabled: service.isEnabled(),
+    }));
   });
 
-  // Test AllDebrid connection
-  app.post<{ Body: { alldebridApiKey?: string } }>('/api/alldebrid/test', async (request) => {
-    const { alldebridApiKey } = request.body;
-    console.log('[API] Testing AllDebrid connection...');
+  // Test debrid service connection
+  app.post<{ Params: { serviceName: string }; Body: Partial<Config> }>('/api/debrid/:serviceName/test', async (request, reply) => {
+    const { serviceName } = request.params;
+    const formConfig = request.body;
+    console.log(`[API] Testing debrid service: ${serviceName}`);
 
-    // Temporarily save the API key for testing (only if it's a new value, not the masked one)
-    if (alldebridApiKey && alldebridApiKey !== '********') {
+    // If form config is provided, temporarily save it for the test
+    if (formConfig && Object.keys(formConfig).length > 0) {
+      console.log(`[API] Using form config for debrid test`);
       const currentConfig = getConfig();
-      saveConfig({ ...currentConfig, alldebridApiKey });
+      const tempConfig: Config = {
+        ...currentConfig,
+        ...formConfig,
+        debrid: {
+          alldebrid: {
+            ...currentConfig.debrid.alldebrid,
+            ...formConfig.debrid?.alldebrid,
+            apiKey: formConfig.debrid?.alldebrid?.apiKey === '********'
+              ? currentConfig.debrid.alldebrid.apiKey
+              : (formConfig.debrid?.alldebrid?.apiKey ?? currentConfig.debrid.alldebrid.apiKey),
+          },
+          realdebrid: {
+            ...currentConfig.debrid.realdebrid,
+            ...formConfig.debrid?.realdebrid,
+            apiKey: formConfig.debrid?.realdebrid?.apiKey === '********'
+              ? currentConfig.debrid.realdebrid.apiKey
+              : (formConfig.debrid?.realdebrid?.apiKey ?? currentConfig.debrid.realdebrid.apiKey),
+          },
+          premiumize: {
+            ...currentConfig.debrid.premiumize,
+            ...formConfig.debrid?.premiumize,
+            apiKey: formConfig.debrid?.premiumize?.apiKey === '********'
+              ? currentConfig.debrid.premiumize.apiKey
+              : (formConfig.debrid?.premiumize?.apiKey ?? currentConfig.debrid.premiumize.apiKey),
+          },
+        },
+      };
+      saveConfig(tempConfig);
     }
-    // If '********' was sent, we use the already saved config (no change needed)
 
     try {
-      const result = await alldebrid.testConnection();
-      return { success: result };
+      const result = await testDebridService(serviceName);
+      return { success: result, message: result ? 'Connection successful' : 'Connection failed - check logs for details' };
     } catch (error) {
-      console.error('[API] AllDebrid test error:', error);
+      console.error(`[API] Debrid test error for ${serviceName}:`, error);
       return { success: false, error: String(error) };
     }
   });
@@ -218,8 +295,8 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
     return {
       status: 'ok',
       enabledClients: getEnabledClients().map(c => c.name),
+      enabledDebridServices: getEnabledDebridServices().map(s => s.name),
       blackholePath: getConfig().blackholePath,
-      alldebridConfigured: alldebrid.isConfigured(),
     };
   });
 
