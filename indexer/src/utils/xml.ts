@@ -139,7 +139,7 @@ export function buildCapsResponse(caps: TorznabCaps): string {
         },
         'tv-search': {
           '@_available': caps.searching.tvsearch.available ? 'yes' : 'no',
-          '@_supportedParams': 'q,season,ep,year',
+          '@_supportedParams': 'q,season,ep,year,imdbid',
         },
         'movie-search': {
           '@_available': caps.searching.moviesearch.available ? 'yes' : 'no',
