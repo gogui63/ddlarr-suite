@@ -169,10 +169,24 @@ async function executeSearch(ctx: SearchContext): Promise<string> {
       break;
     }
     case 'movie':
-      results = await scraper.searchMovies(searchParams);
+      // Only search if imdbid is provided to avoid duplicate results
+      // (Radarr sends both text and imdbid searches)
+      if (searchParams.imdbid) {
+        results = await scraper.searchMovies(searchParams);
+      } else {
+        console.log(`[Torznab] Skipping movie search without imdbid to avoid duplicates`);
+        results = [];
+      }
       break;
     case 'tvsearch':
-      results = await scraper.searchSeries(searchParams);
+      // Only search if imdbid is provided to avoid duplicate results
+      // (Sonarr sends both text and imdbid searches)
+      if (searchParams.imdbid) {
+        results = await scraper.searchSeries(searchParams);
+      } else {
+        console.log(`[Torznab] Skipping tvsearch without imdbid to avoid duplicates`);
+        results = [];
+      }
       break;
   }
 
