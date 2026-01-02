@@ -1,5 +1,5 @@
 import { XMLBuilder } from 'fast-xml-parser';
-import { TorznabItem, TorznabCaps, TorznabCategory } from '../models/torznab.js';
+import { TorznabItem } from '../models/torznab.js';
 
 const xmlBuilder = new XMLBuilder({
   ignoreAttributes: false,
@@ -9,204 +9,93 @@ const xmlBuilder = new XMLBuilder({
   suppressBooleanAttributes: false,
 });
 
-function formatDate(date: Date): string {
-  return date.toUTCString();
+function formatDate(date: Date | undefined): string {
+  const d = date || new Date();
+  return d.toUTCString();
 }
 
-function categoryToName(category: TorznabCategory): string {
-  const names: Record<TorznabCategory, string> = {
-    [TorznabCategory.Movies]: 'Movies',
-    [TorznabCategory.MoviesSD]: 'Movies/SD',
-    [TorznabCategory.MoviesHD]: 'Movies/HD',
-    [TorznabCategory.MoviesUHD]: 'Movies/UHD',
-    [TorznabCategory.Movies3D]: 'Movies/3D',
-    [TorznabCategory.TV]: 'TV',
-    [TorznabCategory.TVSD]: 'TV/SD',
-    [TorznabCategory.TVHD]: 'TV/HD',
-    [TorznabCategory.TVUHD]: 'TV/UHD',
-    [TorznabCategory.Anime]: 'Anime',
-    [TorznabCategory.Books]: 'Books',
-    [TorznabCategory.BooksMags]: 'Books/Mags',
-    [TorznabCategory.BooksEBook]: 'Books/EBook',
-    [TorznabCategory.BooksComics]: 'Books/Comics',
-    [TorznabCategory.BooksOther]: 'Books/Other',
-  };
-  return names[category] || 'Other';
-}
-
-export function buildTorznabResponse(items: TorznabItem[], siteTitle: string, baseUrl?: string): string {
-  const rssItems = items.map((item) => {
-    // Si baseUrl est fourni, génère un lien vers /torrent qui créera un faux .torrent
-    const torrentLink = baseUrl
-      ? `${baseUrl}/torrent?link=${encodeURIComponent(item.link)}&name=${encodeURIComponent(item.title)}&size=${item.size || 0}`
-      : item.link;
-    const torznabAttrs: Array<{ '@_name': string; '@_value': string }> = [
-      { '@_name': 'category', '@_value': String(item.category) },
-    ];
-
-    if (item.imdbId) {
-      torznabAttrs.push({ '@_name': 'imdb', '@_value': item.imdbId });
-    }
-    if (item.tmdbId) {
-      torznabAttrs.push({ '@_name': 'tmdbid', '@_value': item.tmdbId });
-    }
-    if (item.tvdbId) {
-      torznabAttrs.push({ '@_name': 'tvdbid', '@_value': item.tvdbId });
-    }
-    if (item.season !== undefined) {
-      torznabAttrs.push({ '@_name': 'season', '@_value': String(item.season) });
-    }
-    if (item.episode !== undefined) {
-      torznabAttrs.push({ '@_name': 'episode', '@_value': String(item.episode) });
-    }
-    if (item.size) {
-      torznabAttrs.push({ '@_name': 'size', '@_value': String(item.size) });
-    }
-    if (item.year) {
-      torznabAttrs.push({ '@_name': 'year', '@_value': String(item.year) });
-    }
-
-    // DDL n'a pas de seeders, mais on met une valeur pour éviter le filtrage par les *arr apps
-    torznabAttrs.push({ '@_name': 'seeders', '@_value': '100' });
-    torznabAttrs.push({ '@_name': 'peers', '@_value': '100' });
-
-    // Determine content type
-    const isTV = item.category >= 5000 && item.category < 6000;
-    const isBook = item.category >= 7000 && item.category < 8000;
-    let contentType = 'movie';
-    if (isTV) contentType = 'series';
-    if (isBook) contentType = 'ebook';
-    torznabAttrs.push({ '@_name': 'type', '@_value': contentType });
-
-    const rssItem: Record<string, unknown> = {
-      title: item.title,
-      guid: {
-        '@_isPermaLink': 'true',
-        '#text': item.guid,
-      },
-      link: torrentLink,
-      pubDate: item.pubDate ? formatDate(item.pubDate) : formatDate(new Date()),
-      category: categoryToName(item.category),
-      size: item.size || 0,
-      description: item.title,
-      enclosure: {
-        '@_url': torrentLink,
-        '@_length': String(item.size || 0),
-        '@_type': 'application/x-bittorrent',
-      },
-      'torznab:attr': torznabAttrs,
-    };
-
-    if (item.comments) {
-      rssItem.comments = item.comments;
-    }
-
-    return rssItem;
-  });
-
-  const rss = {
-    '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
+export function buildTorznabResponse(items: TorznabItem[], siteName: string, baseUrl?: string) {
+  const response = {
     rss: {
-      '@_version': '1.0',
-      '@_xmlns:atom': 'http://www.w3.org/2005/Atom',
+      '@_version': '2.0',
       '@_xmlns:torznab': 'http://torznab.com/schemas/2015/feed',
       channel: {
-        'atom:link': {
-          '@_rel': 'self',
-          '@_type': 'application/rss+xml',
-        },
-        title: `DDL Torznab - ${siteTitle}`,
-        description: `DDL indexer for ${siteTitle}`,
-        link: 'https://github.com',
-        language: 'fr-fr',
-        category: 'search',
-        item: rssItems,
+        title: siteName,
+        description: `Torznab feed for ${siteName}`,
+        link: baseUrl || '',
+        item: items.map(item => {
+          // GUID unique pour éviter les fusions de lignes dans Prowlarr
+          const guidValue = Buffer.from(`${item.link}-${item.title}`).toString('base64');
+          
+          return {
+            title: item.title,
+            guid: {
+              '@_isPermaLink': 'false',
+              '#text': guidValue,
+            },
+            link: item.link,
+            pubDate: formatDate(item.pubDate),
+            category: item.category,
+            description: item.title,
+            enclosure: {
+              '@_url': item.link,
+              '@_length': item.size || 0,
+              '@_type': 'application/x-bittorrent',
+            },
+            'torznab:attr': [
+              { '@_name': 'category', '@_value': item.category },
+              { '@_name': 'size', '@_value': item.size || 0 },
+              ...(item.imdbId ? [{ '@_name': 'imdbid', '@_value': item.imdbId }] : []),
+              ...(item.tmdbId ? [{ '@_name': 'tmdbid', '@_value': item.tmdbId }] : []),
+              ...(item.season !== undefined ? [{ '@_name': 'season', '@_value': item.season }] : []),
+              ...(item.episode !== undefined ? [{ '@_name': 'episode', '@_value': item.episode }] : []),
+            ],
+          };
+        }),
       },
     },
   };
 
-  return xmlBuilder.build(rss);
+  return xmlBuilder.build(response);
 }
 
-export function buildCapsResponse(caps: TorznabCaps): string {
-  const capsXml = {
-    '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
+export function buildCapsResponse(caps: any) {
+  const response = {
     caps: {
       server: {
         '@_version': '1.0',
-        '@_title': caps.server.title,
-        '@_strapline': 'DDL Indexer for Sonarr/Radarr',
+        '@_title': caps?.server?.title || 'Indexer',
       },
-      limits: {
-        '@_max': String(caps.limits.max),
-        '@_default': String(caps.limits.default),
-      },
+      limits: { '@_max': '100', '@_default': '50' },
+      retention: { '@_value': '999' },
+      registration: { '@_status': 'open', '@_open': 'yes' },
       searching: {
-        search: {
-          '@_available': caps.searching.search.available ? 'yes' : 'no',
-          '@_supportedParams': 'q',
-        },
-        'tv-search': {
-          '@_available': caps.searching.tvsearch.available ? 'yes' : 'no',
-          '@_supportedParams': 'q,season,ep,year,imdbid',
-        },
-        'movie-search': {
-          '@_available': caps.searching.moviesearch.available ? 'yes' : 'no',
-          '@_supportedParams': 'q,year,imdbid,tmdbid',
-        },
-        'book-search': {
-          '@_available': caps.searching.booksearch.available ? 'yes' : 'no',
-          '@_supportedParams': 'q,author,title',
-        },
+        search: { '@_available': 'yes', '@_supportedParams': 'q' },
+        'tv-search': { '@_available': 'yes', '@_supportedParams': 'q,season,ep' },
+        'movie-search': { '@_available': 'yes', '@_supportedParams': 'q,imdbid,tmdbid' },
       },
       categories: {
-        category: [
-          {
-            '@_id': '2000',
-            '@_name': 'Movies',
-            subcat: [
-              { '@_id': '2030', '@_name': 'Movies/SD' },
-              { '@_id': '2040', '@_name': 'Movies/HD' },
-              { '@_id': '2045', '@_name': 'Movies/UHD' },
-              { '@_id': '2060', '@_name': 'Movies/3D' },
-            ],
-          },
-          {
-            '@_id': '5000',
-            '@_name': 'TV',
-            subcat: [
-              { '@_id': '5030', '@_name': 'TV/SD' },
-              { '@_id': '5040', '@_name': 'TV/HD' },
-              { '@_id': '5045', '@_name': 'TV/UHD' },
-              { '@_id': '5070', '@_name': 'Anime' },
-            ],
-          },
-          {
-            '@_id': '7000',
-            '@_name': 'Books',
-            subcat: [
-              { '@_id': '7010', '@_name': 'Books/Mags' },
-              { '@_id': '7020', '@_name': 'Books/EBook' },
-              { '@_id': '7030', '@_name': 'Books/Comics' },
-              { '@_id': '7050', '@_name': 'Books/Other' },
-            ],
-          },
-        ],
+        category: (caps?.categories || []).map((cat: any) => ({
+          '@_id': cat.id,
+          '@_name': cat.name,
+          subcat: (cat.subcats || []).map((sub: any) => ({
+            '@_id': sub.id,
+            '@_name': sub.name,
+          })),
+        })),
       },
     },
   };
 
-  return xmlBuilder.build(capsXml);
+  return xmlBuilder.build(response);
 }
 
-export function buildErrorResponse(code: number, description: string): string {
-  const errorXml = {
-    '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' },
+export function buildErrorResponse(code: number, description: string) {
+  const response = {
     error: {
-      '@_code': String(code),
+      '@_code': code,
       '@_description': description,
     },
   };
-
-  return xmlBuilder.build(errorXml);
+  return xmlBuilder.build(response);
 }

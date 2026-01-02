@@ -120,7 +120,11 @@ export class WawacityScraper implements BaseScraper {
 
         // Extrait la taille depuis .wa-sub-block-content
         const contentText = $block.find('.wa-sub-block-content').text();
-        const size = parseSize(contentText);
+        let size = parseSize(contentText);
+
+        if (!size) {
+          size = contentType === 'ebook' ? 50 * 1024 * 1024 : 1500 * 1024 * 1024; // 50 Mo pour ebooks, 1.5 Go sinon
+        }
 
         // Extrait qualité et langue depuis le titre
         const quality = parseQuality(title);
