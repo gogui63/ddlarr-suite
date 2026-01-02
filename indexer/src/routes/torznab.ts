@@ -88,8 +88,11 @@ function getCapsForSite(siteName: string): TorznabCaps {
 async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> {
   const items: TorznabItem[] = [];
   const resolveInIndexer = config.dlprotectResolveAt === 'indexer';
+  const baseDate = new Date();
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+
     // Resolve dl-protect links via Botasaurus service (if configured to resolve in indexer)
     // Note: Debriding is now handled by the downloader service
     let link = result.link;
@@ -102,7 +105,7 @@ async function processResults(results: ScraperResult[]): Promise<TorznabItem[]> 
       guid: Buffer.from(result.link).toString('base64').slice(0, 40),
       link,
       comments: result.pageUrl,
-      pubDate: result.pubDate,
+      pubDate: result.pubDate || new Date(baseDate.getTime() - (i * 60 * 1000)),
       size: result.size,
       category: contentTypeToCategory(result.contentType, result.quality),
       imdbId: result.imdbId,
