@@ -87,7 +87,7 @@ export class WawacityScraper implements BaseScraper {
     try {
       const html = await fetchHtml(url);
       const results = this.parseLatestResults(html, contentType, limit);
-      
+
       console.log(`[WawaCity] Found ${results.length} latest ${contentType} results`);
       return results;
     } catch (error) {
@@ -312,14 +312,22 @@ export class WawacityScraper implements BaseScraper {
           }
         }
 
-        console.log(`[WawaCity] Found matching result: ${title}`);
+        // Si on cherche une saison spécifique, vérifie que la saison correspond
+        if (params.season && contentType === 'series') {
+          const seasonNum = parseInt(params.season, 10);
+          if (extractedSeason !== undefined && extractedSeason !== seasonNum) {
+            console.log(`[WawaCity] Skipping "${title}" - season ${extractedSeason} != ${seasonNum}`);
+            return;
+          }
+        }
 
-        // Extrait qualité et langue depuis le titre ou les tags
+        // Construit le lien complet
+        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
+
         const quality = parseQuality(title);
         const language = parseLanguage(title);
 
-        // Construit l'URL de la page de détail
-        const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
+        console.log(`[WawaCity] Found matching result: ${title}`);
 
         results.push({
           title,
@@ -332,6 +340,51 @@ export class WawacityScraper implements BaseScraper {
         // Skip invalid items
       }
     });
+
+    // Fallback: utilise les anciens sélecteurs si aucun résultat
+    if (results.length === 0) {
+      const selector = RESULT_SELECTORS[contentType];
+      $(selector).each((_, element) => {
+        try {
+          const $link = $(element);
+          const titleHtml = $link.html() || '';
+          const title = $link.text().trim();
+          const href = $link.attr('href') || '';
+
+          if (!title || !href) return;
+
+          // Extrait le nom et la saison (selon le type de contenu)
+          const { name, season: extractedSeason } = extractName(titleHtml, contentType);
+
+          // Vérifie que le nom correspond (Levenshtein, adapté au type de contenu)
+          if (validationQuery && name) {
+            if (!isNameMatch(validationQuery, name, contentType, '[WawaCity]')) {
+              return;
+            }
+          }
+
+          // Si on cherche une saison spécifique, vérifie
+          if (params.season && contentType === 'series') {
+            const seasonNum = parseInt(params.season, 10);
+            if (extractedSeason !== undefined && extractedSeason !== seasonNum) {
+              return;
+            }
+          }
+
+          const pageUrl = href.startsWith('http') ? href : `${this.baseUrl}/${href}`;
+
+          results.push({
+            title,
+            pageUrl,
+            quality: parseQuality(title),
+            language: parseLanguage(title),
+            season: extractedSeason,
+          });
+        } catch {
+          // Skip invalid items
+        }
+      });
+    }
 
     return results;
   }
