@@ -24,6 +24,9 @@ export const config = {
   },
 
   flaresolverrUrl: process.env.FLARESOLVERR_URL || '',
+  // Max time (ms) FlareSolverr may spend solving a challenge, and attempts per URL
+  flaresolverrTimeout: parseInt(process.env.FLARESOLVERR_TIMEOUT || '120000', 10),
+  flaresolverrRetries: parseInt(process.env.FLARESOLVERR_RETRIES || '3', 10),
   dlprotectServiceUrl: process.env.DLPROTECT_SERVICE_URL || 'http://localhost:5000',
   dlprotectResolveAt: (process.env.DLPROTECT_RESOLVE_AT || 'indexer') as 'indexer' | 'downloader',
   darkiworldServiceUrl: process.env.DARKIWORLD_SERVICE_URL || 'http://localhost:5002',

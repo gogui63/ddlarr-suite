@@ -29,6 +29,8 @@ services:
       - BOOKYS_URL=${BOOKYS_URL:-}
       - BOOKYS_HOSTER=${BOOKYS_HOSTER:-1fichier}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
       - TMDB_API_KEY=${TMDB_API_KEY:-}
     depends_on:
       dlprotect-resolver:
@@ -94,6 +96,8 @@ services:
       - TEMP_PATH=/downloads-temp
       - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:5000
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
       # Authentication (change these!)
       - QB_USERNAME=${QB_USERNAME:-admin}
       - QB_PASSWORD=${QB_PASSWORD:-adminadmin}
