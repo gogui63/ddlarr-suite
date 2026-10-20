@@ -107,7 +107,7 @@ Cette approche utilise un dossier blackhole et un client de téléchargement ext
 
 > **Auto-détection des URLs** : Si les variables `WAWACITY_URL` ou `ZONETELECHARGER_URL` sont vides, les URLs sont automatiquement récupérées depuis les canaux Telegram officiels.
 
-> **Bookys** : L'URL par défaut est `https://www6.bookys-ebooks.com`. Si le site est protégé par Cloudflare, configurer FlareSolverr (voir ci-dessous).
+> **Bookys** : L'URL actuelle est `https://www7.bookys-ebooks.com` (pas d'auto-détection : à mettre à jour si le domaine change). Le site est protégé par Cloudflare : configurer FlareSolverr (voir ci-dessous). Seuls les liens des hébergeurs listés dans `BOOKYS_HOSTER` sont gardés (`1fichier` par défaut) ; la plupart des journaux récents ne sont plus que sur Nitroflare, utiliser par exemple `BOOKYS_HOSTER=nitroflare,1fichier`.
 
 > **Loadix** : la recherche passe par l'API publique du site, mais la révélation des liens exige une session. Voir [Loadix](#loadix) ci-dessous.
 
@@ -135,7 +135,9 @@ WAWACITY_URL=
 ZONETELECHARGER_URL=
 
 # Bookys (journaux, magazines, ebooks)
-BOOKYS_URL=https://www6.bookys-ebooks.com
+BOOKYS_URL=https://www7.bookys-ebooks.com
+# Hébergeurs gardés pour Bookys (séparés par des virgules, défaut : 1fichier)
+# BOOKYS_HOSTER=nitroflare,1fichier
 
 # FlareSolverr (optionnel - requis pour Bookys si Cloudflare est actif)
 # FLARESOLVERR_URL=http://flaresolverr:8191
@@ -386,9 +388,15 @@ docker compose --profile qbittorrent --profile flaresolverr up -d
 ```bash
 # Dans .env
 FLARESOLVERR_URL=http://flaresolverr:8191
+# Temps max (ms) accordé à FlareSolverr pour résoudre un challenge (défaut : 120000)
+# FLARESOLVERR_TIMEOUT=120000
+# Nombre d'essais par page si FlareSolverr échoue ou renvoie une page incomplète (défaut : 3)
+# FLARESOLVERR_RETRIES=3
 ```
 
 > FlareSolverr tourne sur le port `8191` (non exposé par défaut, interne au réseau Docker).
+
+> Une fois un challenge résolu, l'indexeur réutilise le cookie Cloudflare (`cf_clearance`) et le User-Agent obtenus pour les pages suivantes du même site, sans repasser par FlareSolverr. Les requêtes envoyées à FlareSolverr le sont une par une, car il gère mal les requêtes simultanées.
 
 ### Intégration Prowlarr
 
@@ -503,13 +511,16 @@ Voir `.env.example` pour la liste complète.
 | `DLPROTECT_RESOLVER_PORT` | Port du résolveur dl-protect | 5000 |
 | `WAWACITY_URL` | URL de WawaCity (auto-détection si vide) | auto |
 | `ZONETELECHARGER_URL` | URL de Zone-Téléchargement (auto-détection si vide) | auto |
-| `BOOKYS_URL` | URL de Bookys | https://www6.bookys-ebooks.com |
+| `BOOKYS_URL` | URL de Bookys | - |
+| `BOOKYS_HOSTER` | Hébergeurs gardés pour Bookys (séparés par des virgules) | 1fichier |
 | `LOADIX_URL` | URL de Loadix (vide = indexeur désactivé) | - |
 | `LOADIX_MNEMONIC` | Phrase BIP39 du compte Loadix (connexion automatique via le résolveur) | - |
 | `LOADIX_EMAIL` / `LOADIX_PASSWORD` | Alternative à la phrase BIP39 : identifiants email | - |
 | `LOADIX_REFRESH_COOKIE` | Repli sans résolveur : cookie de refresh copié du navigateur | - |
 | `LOADIX_RESOLVE_AT` | Où révéler les liens Loadix (`indexer` ou `downloader`) | downloader |
 | `FLARESOLVERR_URL` | URL du service FlareSolverr (optionnel) | - |
+| `FLARESOLVERR_TIMEOUT` | Temps max (ms) pour résoudre un challenge Cloudflare | 120000 |
+| `FLARESOLVERR_RETRIES` | Nombre d'essais par page via FlareSolverr | 3 |
 | `WAWACITY_TELEGRAM` | Canal Telegram WawaCity pour auto-détection | https://t.me/s/Wawacityofficiel |
 | `ZONETELECHARGER_TELEGRAM` | Canal Telegram ZT pour auto-détection | https://t.me/s/ztofficiel |
 | `BLACKHOLE_PATH` | Dossier blackhole | - |

@@ -23,6 +23,8 @@ services:
       - LOADIX_RESOLVE_AT=${LOADIX_RESOLVE_AT:-downloader}
       - LOADIX_MAX_MEDIA=${LOADIX_MAX_MEDIA:-10}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
       - TMDB_API_KEY=${TMDB_API_KEY:-}
     depends_on:
       dlprotect-resolver:
@@ -185,6 +187,8 @@ services:
       - TEMP_PATH=/downloads-temp
       - DLPROTECT_SERVICE_URL=http://dlprotect-resolver:${DLPROTECT_RESOLVER_PORT:-5000}
       - FLARESOLVERR_URL=${FLARESOLVERR_URL:-}
+      - FLARESOLVERR_TIMEOUT=${FLARESOLVERR_TIMEOUT:-120000}
+      - FLARESOLVERR_RETRIES=${FLARESOLVERR_RETRIES:-3}
       # Loadix session (needed to reveal Loadix links at download time)
       - LOADIX_URL=${LOADIX_URL:-}
       - LOADIX_API_URL=${LOADIX_API_URL:-https://api.loadix.fun}
