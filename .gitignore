@@ -39,3 +39,6 @@ downloads/
 *.temp
 *.swp
 *~
+# Python
+__pycache__/
+.pytest_cache/

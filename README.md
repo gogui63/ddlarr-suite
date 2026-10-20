@@ -724,6 +724,24 @@ npm install
 npm run dev
 ```
 
+### Tests et intégration continue
+
+Chaque service Node a une suite de tests unitaires (vitest) dans son dossier `test/`, et le résolveur une suite pytest dans `botasaurus-service/tests/` (le navigateur y est remplacé par des stubs, aucun Chrome requis).
+
+```bash
+# Un service Node (indexer, qbittorrent ou downloader)
+cd indexer
+npm run typecheck
+npm test
+
+# Résolveur
+cd botasaurus-service
+pip install -r requirements-test.txt
+python -m pytest tests
+```
+
+Le workflow GitHub Actions `CI` (`.github/workflows/ci.yml`) rejoue tout cela sur chaque pull request et sur chaque push de `main` : typecheck et tests des trois services Node, build de l'interface qBittorrent, tests du résolveur et validation des fichiers `docker-compose`. Une PR qui casse l'un de ces points est signalée avant relecture.
+
 ## Licence
 
 MIT

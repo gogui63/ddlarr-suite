@@ -39,7 +39,7 @@ function isBlockedError(error: any): boolean {
  * A usable page is a complete HTML document that is not a Cloudflare challenge.
  * FlareSolverr sometimes reports "ok" with only a fragment of the page.
  */
-function isCompletePage(html: string | undefined): boolean {
+export function isCompletePage(html: string | undefined): boolean {
   if (!html) return false;
   if (!/<html[\s>]/i.test(html) || !/<\/body>/i.test(html)) return false;
   return !/<title>\s*Just a moment/i.test(html);
