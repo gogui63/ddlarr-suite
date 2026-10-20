@@ -1,0 +1,39 @@
+# Keeps dependencies current through pull requests, each checked by the CI workflow
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /indexer
+    schedule:
+      interval: weekly
+    groups:
+      indexer:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /qbittorrent
+    schedule:
+      interval: weekly
+    groups:
+      qbittorrent:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /qbittorrent/ui
+    schedule:
+      interval: weekly
+    groups:
+      qbittorrent-ui:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /downloader
+    schedule:
+      interval: weekly
+    groups:
+      downloader:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /botasaurus-service
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

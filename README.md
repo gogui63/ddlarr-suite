@@ -742,6 +742,8 @@ python -m pytest tests
 
 Le workflow GitHub Actions `CI` (`.github/workflows/ci.yml`) rejoue tout cela sur chaque pull request et sur chaque push de `main` : typecheck et tests des trois services Node, build de l'interface qBittorrent, tests du résolveur et validation des fichiers `docker-compose`. Une PR qui casse l'un de ces points est signalée avant relecture.
 
+Les tests Node couvrent aussi les scrapers (pages HTML et réponses API simulées), les routes Torznab et l'API qBittorrent telle que Radarr et Sonarr l'appellent. Dependabot (`.github/dependabot.yml`) ouvre chaque semaine des PR de mise à jour des dépendances npm, pip et des actions GitHub, qui passent par la même CI.
+
 ## Licence
 
 MIT
