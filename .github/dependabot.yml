@@ -11,6 +11,11 @@ updates:
       indexer-minor:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
   - package-ecosystem: npm
     directory: /qbittorrent
     schedule:
@@ -19,6 +24,11 @@ updates:
       qbittorrent-minor:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
   - package-ecosystem: npm
     directory: /qbittorrent/ui
     schedule:
@@ -42,6 +52,11 @@ updates:
       downloader-minor:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet; TypeScript is
+      # upgraded for all packages at once, so the services wait for the UI
+      - dependency-name: typescript
+        versions: [">=7"]
   - package-ecosystem: pip
     directory: /botasaurus-service
     schedule:
