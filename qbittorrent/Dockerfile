@@ -2,7 +2,7 @@
 FROM node:20-alpine AS ui-builder
 WORKDIR /app/ui
 COPY ui/package*.json ./
-RUN npm install
+RUN npm ci
 COPY ui/ ./
 RUN npm run build
 
@@ -10,7 +10,7 @@ RUN npm run build
 FROM node:20-alpine AS backend-builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY src ./src
 COPY tsconfig.json ./
 RUN npm run build
