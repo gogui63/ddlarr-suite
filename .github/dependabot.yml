@@ -27,6 +27,13 @@ updates:
       qbittorrent-ui-minor:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # vue-tsc does not support the TypeScript 7 compiler yet
+      - dependency-name: typescript
+        versions: [">=7"]
+      # Tailwind 4 changes the configuration model; to be migrated deliberately
+      - dependency-name: tailwindcss
+        versions: [">=4"]
   - package-ecosystem: npm
     directory: /downloader
     schedule:
