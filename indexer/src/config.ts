@@ -15,6 +15,17 @@ export const config = {
     zonetelecharger: process.env.ZONETELECHARGER_URL || '',
     darkiworld: process.env.DARKIWORLD_URL || '',
     bookys: process.env.BOOKYS_URL || '',
+    loadix: process.env.LOADIX_URL || '',
+  },
+
+  // Loadix (loadix.fun) - JSON API + authenticated link reveal
+  loadix: {
+    url: process.env.LOADIX_URL || '',
+    apiUrl: (process.env.LOADIX_API_URL || 'https://api.loadix.fun').replace(/\/+$/, ''),
+    accessToken: process.env.LOADIX_ACCESS_TOKEN || '',
+    refreshCookie: process.env.LOADIX_REFRESH_COOKIE || '',
+    resolveAt: (process.env.LOADIX_RESOLVE_AT || 'downloader') as 'indexer' | 'downloader',
+    maxMedia: parseInt(process.env.LOADIX_MAX_MEDIA || '10', 10),
   },
 
   // Telegram channel URLs for dynamic URL resolution
@@ -42,9 +53,10 @@ const resolvedSiteUrls: Record<SiteType, string> = {
   darkiworld: config.sites.darkiworld,
   'darkiworld-premium': config.darkiworldServiceUrl,
   bookys: config.sites.bookys,
+  loadix: config.sites.loadix,
 };
 
-export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld' | 'darkiworld-premium' | 'bookys';
+export type SiteType = 'wawacity' | 'zonetelecharger' | 'darkiworld' | 'darkiworld-premium' | 'bookys' | 'loadix';
 
 // Sites that use Telegram for URL resolution (excludes darkiworld-premium which is a service)
 type TelegramSiteType = 'wawacity' | 'zonetelecharger';
@@ -88,6 +100,16 @@ export async function initializeSiteUrls(): Promise<void> {
 
   // Darkiworld Premium is a service URL, always configured from env
   console.log(`[Config] darkiworld-premium service URL: ${config.darkiworldServiceUrl}`);
+
+  // Loadix: public search API, but link reveal needs a session (resolver login or refresh cookie)
+  if (config.sites.loadix) {
+    console.log(`[Config] loadix URL configured: ${config.sites.loadix} (API: ${config.loadix.apiUrl})`);
+    if (config.loadix.refreshCookie || config.loadix.accessToken) {
+      console.log('[Config] loadix: session from LOADIX_REFRESH_COOKIE / LOADIX_ACCESS_TOKEN');
+    } else {
+      console.log(`[Config] loadix: links will be revealed with the resolver login (${config.dlprotectServiceUrl}/loadix/login)`);
+    }
+  }
 }
 
 /**

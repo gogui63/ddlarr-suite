@@ -6,6 +6,7 @@ import { extractLinkFromTorrent, extractNameFromTorrent } from './utils/torrent.
 import { addDownloadToAll, getEnabledClients } from './clients/index.js';
 import { debridLink, isAnyDebridEnabled, getEnabledDebridServices } from './debrid/index.js';
 import { isDlProtectLink, resolveDlProtectLink } from './utils/dlprotect.js';
+import { isLoadixLink, resolveLoadixLink } from './utils/loadix.js';
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
 
@@ -94,6 +95,23 @@ async function processFile(filePath: string): Promise<void> {
       console.error(`[Watcher] DL-Protect resolution error: ${error.message}`);
       // Move to failed and stop
       moveToFailed(processingFilePath, 'dlprotect-error');
+      return;
+    }
+  }
+
+  // Reveal Loadix links (authenticated API call → final hoster link)
+  if (isLoadixLink(link)) {
+    console.log(`[Watcher] Revealing Loadix link...`);
+    try {
+      const resolvedLink = await resolveLoadixLink(link);
+      if (!resolvedLink || resolvedLink === link) {
+        throw new Error('Failed to reveal Loadix link');
+      }
+      console.log(`[Watcher] Revealed Loadix link: ${resolvedLink}`);
+      link = resolvedLink;
+    } catch (error: any) {
+      console.error(`[Watcher] Loadix reveal error: ${error.message}`);
+      moveToFailed(processingFilePath, 'loadix-error');
       return;
     }
   }

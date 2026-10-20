@@ -77,7 +77,7 @@ Le projet se compose de plusieurs services Docker. Deux approches sont possibles
 | Service | Port par défaut | Description |
 |---------|-----------------|-------------|
 | **ddl-torznab** | 9117 | Indexeur Torznab qui scrape les sites DDL |
-| **dlprotect-resolver** | 5000 | Service Botasaurus pour résoudre les liens dl-protect |
+| **dlprotect-resolver** | 5000 | Service Botasaurus (navigateur réel) : résolution dl-protect, connexion Loadix |
 | **ddl-qbittorrent** | 8080 | Simule un client qBittorrent pour Sonarr/Radarr |
 
 Cette approche simule un vrai client qBittorrent. Sonarr/Radarr communiquent directement avec ddl-qbittorrent comme s'il s'agissait d'un vrai client torrent.
@@ -103,10 +103,13 @@ Cette approche utilise un dossier blackhole et un client de téléchargement ext
 | WawaCity | `WAWACITY_URL` | [@Wawacityofficiel](https://t.me/s/Wawacityofficiel) | Scraping HTML |
 | Zone-Téléchargement | `ZONETELECHARGER_URL` | [@ztofficiel](https://t.me/s/ztofficiel) | Scraping HTML |
 | Bookys | `BOOKYS_URL` | - | Journaux, magazines, ebooks |
+| Loadix | `LOADIX_URL` | - | Films, séries, animes (API JSON, compte requis) |
 
 > **Auto-détection des URLs** : Si les variables `WAWACITY_URL` ou `ZONETELECHARGER_URL` sont vides, les URLs sont automatiquement récupérées depuis les canaux Telegram officiels.
 
 > **Bookys** : L'URL par défaut est `https://www6.bookys-ebooks.com`. Si le site est protégé par Cloudflare, configurer FlareSolverr (voir ci-dessous).
+
+> **Loadix** : la recherche passe par l'API publique du site, mais la révélation des liens exige une session. Voir [Loadix](#loadix) ci-dessous.
 
 ## Installation
 
@@ -364,6 +367,7 @@ docker compose --profile blackhole up -d
 | ZoneTelecharger | `http://<IP>:9117` | `/api/zonetelecharger` | Films, Séries, Anime |
 | Darkiworld Premium | `http://<IP>:9117` | `/api/darkiworld_premium` | Films, Séries |
 | Bookys | `http://<IP>:9117` | `/api/bookys` | Ebooks (journaux, magazines) |
+| Loadix | `http://<IP>:9117` | `/api/loadix` | Films, Séries, Anime |
 
 > Remplacer `<IP>` par l'adresse du serveur (ex: `192.168.1.100`, `localhost`, ou votre domaine)
 
@@ -500,6 +504,11 @@ Voir `.env.example` pour la liste complète.
 | `WAWACITY_URL` | URL de WawaCity (auto-détection si vide) | auto |
 | `ZONETELECHARGER_URL` | URL de Zone-Téléchargement (auto-détection si vide) | auto |
 | `BOOKYS_URL` | URL de Bookys | https://www6.bookys-ebooks.com |
+| `LOADIX_URL` | URL de Loadix (vide = indexeur désactivé) | - |
+| `LOADIX_MNEMONIC` | Phrase BIP39 du compte Loadix (connexion automatique via le résolveur) | - |
+| `LOADIX_EMAIL` / `LOADIX_PASSWORD` | Alternative à la phrase BIP39 : identifiants email | - |
+| `LOADIX_REFRESH_COOKIE` | Repli sans résolveur : cookie de refresh copié du navigateur | - |
+| `LOADIX_RESOLVE_AT` | Où révéler les liens Loadix (`indexer` ou `downloader`) | downloader |
 | `FLARESOLVERR_URL` | URL du service FlareSolverr (optionnel) | - |
 | `WAWACITY_TELEGRAM` | Canal Telegram WawaCity pour auto-détection | https://t.me/s/Wawacityofficiel |
 | `ZONETELECHARGER_TELEGRAM` | Canal Telegram ZT pour auto-détection | https://t.me/s/ztofficiel |
@@ -583,6 +592,41 @@ DISABLE_REMOTE_DL_PROTECT_CACHE=true
 ```
 
 > Le cache local reste actif même si le cache distant est désactivé.
+
+### Loadix
+
+[Loadix](https://loadix.fun) n'est pas scrapé en HTML : c'est une application React qui s'appuie sur une API JSON (`https://api.loadix.fun`). La recherche dans le catalogue est publique, mais **révéler un lien de téléchargement exige une session authentifiée**, et toutes les méthodes de connexion du site (email, phrase BIP39, anonyme) sont protégées par un challenge Cloudflare Turnstile. La connexion est donc confiée au service `dlprotect-resolver`, qui pilote un vrai navigateur : il obtient le jeton Turnstile sur `loadix.fun`, puis se connecte à l'API avec les identifiants configurés et renvoie la session (jeton d'accès + cookie de refresh) au service qui la demande.
+
+**Connexion par phrase BIP39 (recommandée)**
+
+Loadix propose des comptes identifiés par une phrase de récupération BIP39 (12 ou 24 mots) : aucun email, aucun mot de passe. Le résolveur dérive la clé secp256k1 de la phrase et signe le challenge de l'API, exactement comme le fait le site. Il est conseillé d'utiliser un compte dédié.
+
+1. Générer une phrase sur Loadix (inscription → phrase de récupération) ou avec n'importe quel outil BIP39
+2. La renseigner dans `LOADIX_MNEMONIC`. Si la phrase n'a jamais servi sur Loadix, le compte est créé au premier login (Loadix lui attribue un nom par défaut)
+3. Renseigner `LOADIX_URL=https://loadix.fun` pour activer l'indexeur
+
+```bash
+# Dans .env
+LOADIX_URL=https://loadix.fun
+LOADIX_MNEMONIC=mot1 mot2 mot3 ... mot12
+```
+
+**Connexion par email** : renseigner `LOADIX_EMAIL` et `LOADIX_PASSWORD` à la place de la phrase.
+
+**Repli sans résolveur** : copier le cookie de refresh d'une session ouverte dans le navigateur (DevTools → *Application* → *Cookies* → `https://api.loadix.fun`) sous la forme `nom=valeur` dans `LOADIX_REFRESH_COOKIE`. Le cookie est échangé contre des jetons d'accès de courte durée (`POST /api/auth/refresh`), renouvelés automatiquement ; s'il expire, les services repassent par le login du résolveur quand il est configuré, sinon les téléchargements Loadix échouent avec un message explicite.
+
+Les identifiants ne quittent pas le réseau Docker : seul `dlprotect-resolver` les lit, les autres services ne reçoivent que la session. La connexion n'a lieu qu'au premier téléchargement (la recherche est publique), puis seulement si la session est révoquée.
+
+L'API exige en plus un jeton Turnstile **à chaque révélation de lien** pour les comptes ordinaires (seuls les modérateurs en sont dispensés). Le résolveur fournit ce jeton (`POST /loadix/turnstile`) en résolvant le challenge dans son navigateur, ce qui prend 10 à 30 secondes par lien : c'est la raison pour laquelle la révélation se fait par défaut au moment du téléchargement.
+
+Les résultats de recherche contiennent un lien opaque (`https://api.loadix.fun/api/links/<id>/reveal`) qui est transformé en lien hébergeur :
+
+| `LOADIX_RESOLVE_AT` | Description |
+|---------------------|-------------|
+| `downloader` (défaut) | Le lien est révélé par DDL-qBittorrent ou le downloader blackhole au moment du téléchargement. Un seul appel par fichier réellement téléchargé. |
+| `indexer` | Le lien est révélé pendant la recherche. Chaque résultat coûte un appel authentifié et un challenge Turnstile résolu par le navigateur du résolveur : très lent, gonfle les compteurs de clics du site et peut déclencher sa limite de débit. À éviter. |
+
+Seuls les liens DDL validés sont remontés (les NZB sont ignorés). Le filtre par hébergeur fonctionne comme pour les autres sites : `/api/loadix/1fichier`.
 
 ## Catégories Torznab
 
