@@ -47,13 +47,14 @@ Chaque release publie les images sur GHCR sous plusieurs tags. `docker-compose.p
 | `X.Y` | `ddl-torznab:1.1` | La dernière correction de la ligne mineure (suit les `1.1.x`) |
 | `<sha>` | `ddl-torznab:9e58b36` | Le commit exact de la release |
 
-Pour épingler une version précise, remplacez le tag dans votre `docker-compose.prod.yml` :
+Pour épingler une version précise, renseignez `DDLARR_VERSION` dans votre `.env` : `docker-compose.prod.yml` l'applique aux quatre images (`latest` par défaut).
 
-```yaml
-services:
-  ddl-torznab:
-    image: ghcr.io/z-m-g/ddl-torznab:1.1.0   # au lieu de :latest
+```bash
+# Dans .env
+DDLARR_VERSION=1.3      # ou 1.3.0 pour une version figée
 ```
+
+Les pre-releases publient leurs tags de version mais ne déplacent jamais `latest` : c'est le moyen de les tester sans toucher aux installations qui suivent `latest`.
 
 Les 4 images (`ddl-torznab`, `dlprotect-resolver`, `ddl-qbittorrent`, `darkiworld`) suivent la même numérotation : gardez-les sur la même version. Les notes de la release sont attachées aux images comme description OCI, visible sur la page du package GHCR.
 
